@@ -37,3 +37,13 @@ storage:
 
 data-management:
   mode: ${WEIZHI_DATA_SOURCE_MODE:json}
+
+weizhi:
+  postgresql:
+    enabled: ${WEIZHI_POSTGRES_ENABLED:true}
+    host: ${WEIZHI_POSTGRES_HOST:localhost}
+    port: ${WEIZHI_POSTGRES_PORT:5432}
+    database: ${WEIZHI_POSTGRES_DB:weizhi}
+    username: ${WEIZHI_POSTGRES_USER:weizhi}
+    password: ${WEIZHI_POSTGRES_PASSWORD:weizhi_password}
+    connection-timeout-seconds: ${WEIZHI_POSTGRES_TIMEOUT_SECONDS:3}

@@ -195,6 +195,7 @@ const dataFileCards = computed(() => {
     { key: "ttsHistory", label: t("dataManagement.ttsHistory"), info: json.ttsHistory || {} }
   ];
 });
+const postgresqlInfo = computed(() => dataManagementStatus.value?.postgresql || {});
 const settingsDraft = ref({
   minimax: { apiKey: "", model: "" },
   deepseek: { apiKey: "", model: "" },
@@ -1323,6 +1324,25 @@ const testDataConnection = async () => {
   }
 };
 
+const testPostgreSqlConnection = async () => {
+  dataManagementLoading.value = true;
+  connectionTestResult.value = null;
+  try {
+    const res = await dataManagementApi.testConnection("postgresql");
+    const success = res.data?.success || false;
+    const message = res.data?.message || "";
+    connectionTestResult.value = { success, message };
+    addNotification(success ? "success" : "warning", success ? t("dataManagement.connectionSuccess") : t("dataManagement.connectionFailed"), message);
+    await loadDataManagementStatus();
+  } catch (err: any) {
+    const message = err?.message || "unknown error";
+    connectionTestResult.value = { success: false, message };
+    addNotification("error", t("dataManagement.connectionFailed"), message);
+  } finally {
+    dataManagementLoading.value = false;
+  }
+};
+
 const openDataManagement = () => {
   activeView.value = "dataManagement";
   loadDataManagementStatus();
@@ -1489,9 +1509,18 @@ provide('appState', {
           <section class="settings-card">
             <div class="settings-card-head">
               <strong>{{ $t("dataManagement.postgresqlStatus") }}</strong>
-              <span :class="dataManagementStatus?.postgresql?.ready ? 'active' : 'inactive'">{{ dataManagementStatus?.postgresql?.ready ? $t("apiStatus.statusOk") : $t("apiStatus.statusPending") }}</span>
+              <span :class="postgresqlInfo.ready ? 'active' : 'inactive'">{{ postgresqlInfo.ready ? $t("apiStatus.statusOk") : $t("apiStatus.statusPending") }}</span>
             </div>
-            <p style="font-size: 13px; color: var(--text-muted); margin-top: 8px;">{{ dataManagementStatus?.postgresql?.message || $t("dataManagement.postgresqlUnavailable") }}</p>
+            <p style="font-size: 13px; color: var(--text-muted); margin-top: 8px;">{{ postgresqlInfo.message || $t("dataManagement.postgresqlUnavailable") }}</p>
+            <div style="display: grid; gap: 8px; margin-top: 14px; font-size: 12px; color: var(--text-muted);">
+              <div><strong>{{ $t("dataManagement.host") }}:</strong> {{ postgresqlInfo.host || "-" }}:{{ postgresqlInfo.port || "-" }}</div>
+              <div><strong>{{ $t("dataManagement.database") }}:</strong> {{ postgresqlInfo.database || "-" }}</div>
+              <div><strong>{{ $t("dataManagement.username") }}:</strong> {{ postgresqlInfo.username || "-" }}</div>
+              <div style="word-break: break-all;"><strong>{{ $t("dataManagement.jdbcUrl") }}:</strong> {{ postgresqlInfo.jdbcUrl || "-" }}</div>
+            </div>
+            <button class="log-action" style="margin-top: 14px;" :disabled="dataManagementLoading" @click="testPostgreSqlConnection">
+              {{ $t("dataManagement.testPostgresql") }}
+            </button>
           </section>
         </div>
       </section>

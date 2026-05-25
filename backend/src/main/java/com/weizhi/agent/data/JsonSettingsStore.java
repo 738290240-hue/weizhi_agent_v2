@@ -26,7 +26,7 @@ public class JsonSettingsStore implements SettingsStore {
         this.objectMapper = objectMapper;
     }
 
-    void setSettingsFile(String settingsFile) {
+    public void setSettingsFile(String settingsFile) {
         this.settingsFile = settingsFile;
     }
 

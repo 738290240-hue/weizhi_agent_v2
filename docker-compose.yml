@@ -1,0 +1,33 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: weizhi-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${WEIZHI_POSTGRES_DB:-weizhi}
+      POSTGRES_USER: ${WEIZHI_POSTGRES_USER:-weizhi}
+      POSTGRES_PASSWORD: ${WEIZHI_POSTGRES_PASSWORD:-weizhi_password}
+    ports:
+      - "${WEIZHI_POSTGRES_PORT:-5432}:5432"
+    volumes:
+      - weizhi-postgres-data:/var/lib/postgresql/data
+    command:
+      - postgres
+      - -c
+      - shared_buffers=128MB
+      - -c
+      - work_mem=4MB
+      - -c
+      - maintenance_work_mem=64MB
+      - -c
+      - max_connections=30
+    mem_limit: 512m
+    cpus: 1.0
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${WEIZHI_POSTGRES_USER:-weizhi} -d ${WEIZHI_POSTGRES_DB:-weizhi}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+volumes:
+  weizhi-postgres-data:

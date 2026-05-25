@@ -17,19 +17,35 @@ import java.util.Map;
 public class DataManagementService {
     private final JsonSettingsStore jsonSettingsStore;
     private final StorageProperties storageProperties;
+    private final PostgreSqlConnectionProbe postgreSqlConnectionProbe;
     private DataSourceMode mode;
 
     public DataManagementService(
             JsonSettingsStore jsonSettingsStore,
             StorageProperties storageProperties,
+            PostgreSqlConnectionProbe postgreSqlConnectionProbe,
             @Value("${data-management.mode:json}") String configuredMode
     ) {
         this.jsonSettingsStore = jsonSettingsStore;
         this.storageProperties = storageProperties;
+        this.postgreSqlConnectionProbe = postgreSqlConnectionProbe;
         this.mode = DataSourceMode.from(configuredMode);
         if (this.mode == DataSourceMode.POSTGRESQL) {
-            this.mode = DataSourceMode.JSON;
+            try {
+                Map<String, Object> test = postgreSqlConnectionProbe.testConnection();
+                if (!Boolean.TRUE.equals(test.get("success"))) {
+                    System.out.println("[DataManagement] PostgreSQL configured but connection test failed at boot. Falling back to JSON mode.");
+                    this.mode = DataSourceMode.JSON;
+                }
+            } catch (Exception e) {
+                System.out.println("[DataManagement] PostgreSQL connection check failed at boot: " + e.getMessage() + ". Falling back to JSON mode.");
+                this.mode = DataSourceMode.JSON;
+            }
         }
+    }
+
+    public synchronized DataSourceMode getMode() {
+        return mode;
     }
 
     public synchronized Map<String, Object> status() {
@@ -45,10 +61,18 @@ public class DataManagementService {
         DataSourceMode requested = DataSourceMode.from(requestedMode);
         Map<String, Object> result = new LinkedHashMap<>();
         if (requested == DataSourceMode.POSTGRESQL) {
-            mode = DataSourceMode.JSON;
-            result.put("success", false);
-            result.put("mode", mode.value());
-            result.put("message", "PostgreSQL mode is visible but not ready in this phase.");
+            Map<String, Object> test = postgreSqlConnectionProbe.testConnection();
+            if (Boolean.TRUE.equals(test.get("success"))) {
+                mode = DataSourceMode.POSTGRESQL;
+                result.put("success", true);
+                result.put("mode", mode.value());
+                result.put("message", "PostgreSQL database storage mode is active.");
+            } else {
+                mode = DataSourceMode.JSON;
+                result.put("success", false);
+                result.put("mode", mode.value());
+                result.put("message", "Cannot switch to PostgreSQL: Connection test failed (" + test.get("message") + ").");
+            }
             result.put("status", status());
             return result;
         }
@@ -63,11 +87,7 @@ public class DataManagementService {
     public synchronized Map<String, Object> testConnection(String requestedMode) {
         DataSourceMode requested = DataSourceMode.from(requestedMode);
         if (requested == DataSourceMode.POSTGRESQL) {
-            return Map.of(
-                    "success", false,
-                    "mode", "postgresql",
-                    "message", "PostgreSQL connection testing will be available after the database store is implemented."
-            );
+            return postgreSqlConnectionProbe.testConnection();
         }
         return Map.of(
                 "success", true,
@@ -86,12 +106,7 @@ public class DataManagementService {
     }
 
     private Map<String, Object> postgresqlStatus() {
-        Map<String, Object> status = new LinkedHashMap<>();
-        status.put("configured", false);
-        status.put("available", false);
-        status.put("ready", false);
-        status.put("message", "PostgreSQL store is planned for the next phase.");
-        return status;
+        return postgreSqlConnectionProbe.status();
     }
 
     private Map<String, Object> fileInfo(String filePath, String shape) {

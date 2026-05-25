@@ -99,7 +99,17 @@ export type DataManagementStatus = {
     mode: DataSourceMode;
     ready: boolean;
     json?: Record<string, any>;
-    postgresql?: Record<string, any>;
+    postgresql?: {
+        configured?: boolean;
+        available?: boolean;
+        ready?: boolean;
+        host?: string;
+        port?: number;
+        database?: string;
+        username?: string;
+        jdbcUrl?: string;
+        message?: string;
+    };
 };
 
 export const dataManagementApi = {
@@ -107,4 +117,3 @@ export const dataManagementApi = {
     switchMode: (mode: DataSourceMode) => api.post('/data-management/mode', { mode }),
     testConnection: (mode: DataSourceMode) => api.post('/data-management/test-connection', { mode })
 };
-

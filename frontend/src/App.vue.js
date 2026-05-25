@@ -169,6 +169,7 @@ const dataFileCards = computed(() => {
         { key: "ttsHistory", label: t("dataManagement.ttsHistory"), info: json.ttsHistory || {} }
     ];
 });
+const postgresqlInfo = computed(() => dataManagementStatus.value?.postgresql || {});
 const settingsDraft = ref({
     minimax: { apiKey: "", model: "" },
     deepseek: { apiKey: "", model: "" },
@@ -1276,6 +1277,26 @@ const testDataConnection = async () => {
         dataManagementLoading.value = false;
     }
 };
+const testPostgreSqlConnection = async () => {
+    dataManagementLoading.value = true;
+    connectionTestResult.value = null;
+    try {
+        const res = await dataManagementApi.testConnection("postgresql");
+        const success = res.data?.success || false;
+        const message = res.data?.message || "";
+        connectionTestResult.value = { success, message };
+        addNotification(success ? "success" : "warning", success ? t("dataManagement.connectionSuccess") : t("dataManagement.connectionFailed"), message);
+        await loadDataManagementStatus();
+    }
+    catch (err) {
+        const message = err?.message || "unknown error";
+        connectionTestResult.value = { success: false, message };
+        addNotification("error", t("dataManagement.connectionFailed"), message);
+    }
+    finally {
+        dataManagementLoading.value = false;
+    }
+};
 const openDataManagement = () => {
     activeView.value = "dataManagement";
     loadDataManagementStatus();
@@ -1617,13 +1638,42 @@ else if (__VLS_ctx.activeView === 'dataManagement') {
     __VLS_asFunctionalElement(__VLS_intrinsicElements.strong, __VLS_intrinsicElements.strong)({});
     (__VLS_ctx.$t("dataManagement.postgresqlStatus"));
     __VLS_asFunctionalElement(__VLS_intrinsicElements.span, __VLS_intrinsicElements.span)({
-        ...{ class: (__VLS_ctx.dataManagementStatus?.postgresql?.ready ? 'active' : 'inactive') },
+        ...{ class: (__VLS_ctx.postgresqlInfo.ready ? 'active' : 'inactive') },
     });
-    (__VLS_ctx.dataManagementStatus?.postgresql?.ready ? __VLS_ctx.$t("apiStatus.statusOk") : __VLS_ctx.$t("apiStatus.statusPending"));
+    (__VLS_ctx.postgresqlInfo.ready ? __VLS_ctx.$t("apiStatus.statusOk") : __VLS_ctx.$t("apiStatus.statusPending"));
     __VLS_asFunctionalElement(__VLS_intrinsicElements.p, __VLS_intrinsicElements.p)({
         ...{ style: {} },
     });
-    (__VLS_ctx.dataManagementStatus?.postgresql?.message || __VLS_ctx.$t("dataManagement.postgresqlUnavailable"));
+    (__VLS_ctx.postgresqlInfo.message || __VLS_ctx.$t("dataManagement.postgresqlUnavailable"));
+    __VLS_asFunctionalElement(__VLS_intrinsicElements.div, __VLS_intrinsicElements.div)({
+        ...{ style: {} },
+    });
+    __VLS_asFunctionalElement(__VLS_intrinsicElements.div, __VLS_intrinsicElements.div)({});
+    __VLS_asFunctionalElement(__VLS_intrinsicElements.strong, __VLS_intrinsicElements.strong)({});
+    (__VLS_ctx.$t("dataManagement.host"));
+    (__VLS_ctx.postgresqlInfo.host || "-");
+    (__VLS_ctx.postgresqlInfo.port || "-");
+    __VLS_asFunctionalElement(__VLS_intrinsicElements.div, __VLS_intrinsicElements.div)({});
+    __VLS_asFunctionalElement(__VLS_intrinsicElements.strong, __VLS_intrinsicElements.strong)({});
+    (__VLS_ctx.$t("dataManagement.database"));
+    (__VLS_ctx.postgresqlInfo.database || "-");
+    __VLS_asFunctionalElement(__VLS_intrinsicElements.div, __VLS_intrinsicElements.div)({});
+    __VLS_asFunctionalElement(__VLS_intrinsicElements.strong, __VLS_intrinsicElements.strong)({});
+    (__VLS_ctx.$t("dataManagement.username"));
+    (__VLS_ctx.postgresqlInfo.username || "-");
+    __VLS_asFunctionalElement(__VLS_intrinsicElements.div, __VLS_intrinsicElements.div)({
+        ...{ style: {} },
+    });
+    __VLS_asFunctionalElement(__VLS_intrinsicElements.strong, __VLS_intrinsicElements.strong)({});
+    (__VLS_ctx.$t("dataManagement.jdbcUrl"));
+    (__VLS_ctx.postgresqlInfo.jdbcUrl || "-");
+    __VLS_asFunctionalElement(__VLS_intrinsicElements.button, __VLS_intrinsicElements.button)({
+        ...{ onClick: (__VLS_ctx.testPostgreSqlConnection) },
+        ...{ class: "log-action" },
+        ...{ style: {} },
+        disabled: (__VLS_ctx.dataManagementLoading),
+    });
+    (__VLS_ctx.$t("dataManagement.testPostgresql"));
 }
 else if (__VLS_ctx.activeView === 'settings') {
     __VLS_asFunctionalElement(__VLS_intrinsicElements.section, __VLS_intrinsicElements.section)({
@@ -4683,6 +4733,7 @@ if (__VLS_ctx.selectedAsset) {
 /** @type {__VLS_StyleScopedClasses['settings-card-head']} */ ;
 /** @type {__VLS_StyleScopedClasses['settings-card']} */ ;
 /** @type {__VLS_StyleScopedClasses['settings-card-head']} */ ;
+/** @type {__VLS_StyleScopedClasses['log-action']} */ ;
 /** @type {__VLS_StyleScopedClasses['settings-view']} */ ;
 /** @type {__VLS_StyleScopedClasses['settings-header']} */ ;
 /** @type {__VLS_StyleScopedClasses['icon-btn']} */ ;
@@ -5050,6 +5101,7 @@ const __VLS_self = (await import('vue')).defineComponent({
             selectedDataMode: selectedDataMode,
             connectionTestResult: connectionTestResult,
             dataFileCards: dataFileCards,
+            postgresqlInfo: postgresqlInfo,
             settingsDraft: settingsDraft,
             sidebarWidth: sidebarWidth,
             promptTemplates: promptTemplates,
@@ -5125,6 +5177,7 @@ const __VLS_self = (await import('vue')).defineComponent({
             loadDataManagementStatus: loadDataManagementStatus,
             switchDataSourceMode: switchDataSourceMode,
             testDataConnection: testDataConnection,
+            testPostgreSqlConnection: testPostgreSqlConnection,
             addPromptTemplate: addPromptTemplate,
             deletePromptTemplate: deletePromptTemplate,
             usePromptTemplate: usePromptTemplate,
