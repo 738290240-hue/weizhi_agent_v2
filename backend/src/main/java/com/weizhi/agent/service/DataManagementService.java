@@ -30,18 +30,6 @@ public class DataManagementService {
         this.storageProperties = storageProperties;
         this.postgreSqlConnectionProbe = postgreSqlConnectionProbe;
         this.mode = DataSourceMode.from(configuredMode);
-        if (this.mode == DataSourceMode.POSTGRESQL) {
-            try {
-                Map<String, Object> test = postgreSqlConnectionProbe.testConnection();
-                if (!Boolean.TRUE.equals(test.get("success"))) {
-                    System.out.println("[DataManagement] PostgreSQL configured but connection test failed at boot. Falling back to JSON mode.");
-                    this.mode = DataSourceMode.JSON;
-                }
-            } catch (Exception e) {
-                System.out.println("[DataManagement] PostgreSQL connection check failed at boot: " + e.getMessage() + ". Falling back to JSON mode.");
-                this.mode = DataSourceMode.JSON;
-            }
-        }
     }
 
     public synchronized DataSourceMode getMode() {
