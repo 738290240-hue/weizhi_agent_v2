@@ -1,0 +1,36 @@
+spring:
+  application:
+    name: weizhi-agent-v2
+
+server:
+  port: 3017
+
+minimax:
+  endpoint: https://api.minimax.chat/v1
+  # MiniMax OpenAI-compatible chat completions endpoint (v2 /text/chatcompletion_v2 is deprecated/404)
+  chat-endpoint: ${minimax.endpoint}/chat/completions
+  image-generation-endpoint: ${minimax.endpoint}/image_generation
+  tts-endpoint: ${minimax.endpoint}/t2a_v2
+  model: ${MINIMAX_REVIEW_MODEL:MiniMax-M2.7}
+
+deepseek:
+  api-key: ${DEEPSEEK_API_KEY:}
+  base-url: ${DEEPSEEK_BASE_URL:https://api.deepseek.com}
+  model: ${DEEPSEEK_MODEL:deepseek-v4-flash}
+
+openai:
+  api-key: ${OPENAI_API_KEY:}
+  base-url: ${OPENAI_BASE_URL:https://api.shqbb.com/v1}
+  model: ${OPENAI_MODEL:gpt-5.5}
+
+settings:
+  file: data/ai-settings.json
+
+app:
+  generated-images-path: generated_images
+
+storage:
+  image-dir: ${app.generated-images-path:generated_images}
+  audio-dir: generated_audio
+  image-history-file: data/image-history.json
+  tts-history-file: data/tts-history.json

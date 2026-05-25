@@ -1,0 +1,26 @@
+# Dependencies
+node_modules/
+
+# Build outputs
+target/
+dist/
+frontend-dist/
+*.class
+
+# Local runtime data and generated media
+data/
+backend/data/
+generated_audio/
+generated_images/
+backend/generated_audio/
+backend/generated_images/
+
+# Local environment and logs
+.env
+.env.*
+*.log
+
+# OS/editor noise
+.DS_Store
+.idea/
+.vscode/
