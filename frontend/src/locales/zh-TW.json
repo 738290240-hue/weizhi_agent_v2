@@ -22,7 +22,8 @@
     "clearSession": "清除当前会话",
     "translation": "翻譯工作台",
     "openaiSession": "OpenAI 會話",
-    "openaiDesc": "綠色智能通道"
+    "openaiDesc": "綠色智能通道",
+    "dataManagement": "資料管理"
   },
   "theme": {
     "midnight": "午夜蓝",
@@ -333,5 +334,26 @@
     "historyTitle": "歷史記錄",
     "emptyHistory": "暫無翻譯歷史",
     "toggleHistory": "歷史記錄"
+  },
+  "dataManagement": {
+    "title": "資料管理",
+    "desc": "選擇本機資料來源，檢視 JSON 檔案狀態，並為 PostgreSQL 資料庫模式做準備。",
+    "currentMode": "目前資料來源",
+    "jsonMode": "JSON 檔案",
+    "postgresqlMode": "PostgreSQL",
+    "jsonStatus": "JSON 檔案狀態",
+    "postgresqlStatus": "PostgreSQL 狀態",
+    "settingsFile": "設定檔案",
+    "imageHistory": "圖片歷史",
+    "ttsHistory": "語音歷史",
+    "exists": "存在",
+    "missing": "不存在",
+    "records": "筆記錄",
+    "testConnection": "測試連線",
+    "switchSuccess": "資料來源已切換",
+    "switchFailed": "資料來源切換失敗",
+    "connectionSuccess": "連線可用",
+    "connectionFailed": "連線不可用",
+    "postgresqlUnavailable": "PostgreSQL 模式會在資料庫儲存實作後啟用。"
   }
 }

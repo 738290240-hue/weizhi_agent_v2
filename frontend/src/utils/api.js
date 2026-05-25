@@ -48,3 +48,8 @@ export const ttsApi = {
     generate: (payload) => api.post('/tts/tts', payload),
     preview: (payload) => api.post('/tts/preview', payload)
 };
+export const dataManagementApi = {
+    status: () => api.get('/data-management/status'),
+    switchMode: (mode) => api.post('/data-management/mode', { mode }),
+    testConnection: (mode) => api.post('/data-management/test-connection', { mode })
+};

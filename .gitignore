@@ -8,7 +8,7 @@ frontend-dist/
 *.class
 
 # Local runtime data and generated media
-data/
+/data/
 backend/data/
 generated_audio/
 generated_images/

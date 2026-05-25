@@ -6,14 +6,14 @@ import AppBackground from './components/layout/AppBackground.vue';
 import FloatingSidebar from './components/layout/FloatingSidebar.vue';
 import FloatingMainPanel from './components/layout/FloatingMainPanel.vue';
 import TranslationView from './components/chat/TranslationView.vue';
-import { systemApi, settingsApi, chatApi, deepSeekApi, openaiApi, imageApi, ttsApi, type LogEntry, type ProviderMessage } from "./utils/api";
+import { systemApi, settingsApi, chatApi, deepSeekApi, openaiApi, imageApi, ttsApi, dataManagementApi, type LogEntry, type ProviderMessage, type DataManagementStatus, type DataSourceMode } from "./utils/api";
 import { resolveApiUrl } from "./utils/urlUtils";
 import { Terminal, Send, Trash2, Cpu, Settings, Image as ImageIcon, Volume2, FileText, RefreshCw, History, BookOpen, Activity, FolderOpen, Star, Wrench, Download, Home, Bell, X, ChevronDown, ChevronUp, Palette, Square, Copy, Check } from "lucide-vue-next";
 
 type MediaItem = { type: "image" | "audio"; url: string };
 type ChatMessage = { role: "user" | "assistant"; content: string; media?: MediaItem[] };
 type ChatProvider = "minimax" | "deepseek" | "openai";
-type MainView = "home" | "chat" | "speech" | "translation" | "imageHistory" | "ttsHistory" | "sessions" | "tasks" | "notifications" | "prompts" | "assets" | "favorites" | "diagnostics" | "exports" | "apiStatus" | "logs" | "settings";
+type MainView = "home" | "chat" | "speech" | "translation" | "imageHistory" | "ttsHistory" | "sessions" | "tasks" | "notifications" | "prompts" | "assets" | "favorites" | "diagnostics" | "exports" | "apiStatus" | "logs" | "settings" | "dataManagement";
 type PromptTemplate = { id: string; title: string; content: string; provider: "通用" | "MiniMax" | "DeepSeek" | "OpenAI" };
 type FavoriteItem = { id: string; type: "text" | "image" | "audio"; title: string; subtitle: string; content?: string; url?: string };
 type SessionRecord = { id: string; provider: ChatProvider; title: string; createdAt: string; updatedAt: string; messages: ChatMessage[] };
@@ -181,6 +181,20 @@ const deepSeekUsage = ref<Record<string, any> | null>(null);
 const accountLoading = ref(false);
 const settingsLoading = ref(false);
 const settingsState = ref<Record<string, any>>({});
+
+const dataManagementStatus = ref<DataManagementStatus | null>(null);
+const dataManagementLoading = ref(false);
+const selectedDataMode = ref<DataSourceMode>("json");
+const connectionTestResult = ref<{ success: boolean; message: string } | null>(null);
+
+const dataFileCards = computed(() => {
+  const json = dataManagementStatus.value?.json || {};
+  return [
+    { key: "settings", label: t("dataManagement.settingsFile"), info: json.settings || {} },
+    { key: "imageHistory", label: t("dataManagement.imageHistory"), info: json.imageHistory || {} },
+    { key: "ttsHistory", label: t("dataManagement.ttsHistory"), info: json.ttsHistory || {} }
+  ];
+});
 const settingsDraft = ref({
   minimax: { apiKey: "", model: "" },
   deepseek: { apiKey: "", model: "" },
@@ -1252,6 +1266,68 @@ const openSettings = () => {
   loadSettings();
 };
 
+const loadDataManagementStatus = async () => {
+  dataManagementLoading.value = true;
+  try {
+    const res = await dataManagementApi.status();
+    dataManagementStatus.value = res.data;
+    selectedDataMode.value = res.data?.mode || "json";
+  } catch (err: any) {
+    addNotification("error", t("dataManagement.connectionFailed"), err?.message || "unknown error");
+  } finally {
+    dataManagementLoading.value = false;
+  }
+};
+
+const switchDataSourceMode = async (mode: DataSourceMode) => {
+  selectedDataMode.value = mode;
+  dataManagementLoading.value = true;
+  connectionTestResult.value = null;
+  try {
+    const res = await dataManagementApi.switchMode(mode);
+    if (res.data?.status) dataManagementStatus.value = res.data.status;
+    selectedDataMode.value = res.data?.mode || dataManagementStatus.value?.mode || "json";
+    
+    const success = res.data?.success || false;
+    const message = res.data?.message || "";
+    connectionTestResult.value = { success, message };
+    
+    addNotification(success ? "success" : "warning", success ? t("dataManagement.switchSuccess") : t("dataManagement.switchFailed"), message);
+  } catch (err: any) {
+    selectedDataMode.value = dataManagementStatus.value?.mode || "json";
+    const message = err?.message || "unknown error";
+    connectionTestResult.value = { success: false, message };
+    addNotification("error", t("dataManagement.switchFailed"), message);
+  } finally {
+    dataManagementLoading.value = false;
+  }
+};
+
+const testDataConnection = async () => {
+  dataManagementLoading.value = true;
+  connectionTestResult.value = null;
+  try {
+    const res = await dataManagementApi.testConnection(selectedDataMode.value);
+    const success = res.data?.success || false;
+    const message = res.data?.message || "";
+    connectionTestResult.value = { success, message };
+    
+    addNotification(success ? "success" : "warning", success ? t("dataManagement.connectionSuccess") : t("dataManagement.connectionFailed"), message);
+    await loadDataManagementStatus();
+  } catch (err: any) {
+    const message = err?.message || "unknown error";
+    connectionTestResult.value = { success: false, message };
+    addNotification("error", t("dataManagement.connectionFailed"), message);
+  } finally {
+    dataManagementLoading.value = false;
+  }
+};
+
+const openDataManagement = () => {
+  activeView.value = "dataManagement";
+  loadDataManagementStatus();
+};
+
 const clearCurrentConversation = () => {
   if (activeProvider.value === "minimax") minimaxMessages.value = [];
   else if (activeProvider.value === "deepseek") deepSeekMessages.value = [];
@@ -1312,7 +1388,7 @@ const usePromptTemplate = (template: PromptTemplate) => {
 provide('appState', {
   activeView, activeProvider, showMiniMaxSubnav, unreadNotificationCount, currentTheme, locale,
   openHome, switchProvider, openSpeech, openMiniMaxHistory, markNotificationsRead,
-  openAssets, openDiagnostics, openExports, openApiStatus, openLogs, openSettings,
+  openAssets, openDiagnostics, openExports, openApiStatus, openLogs, openSettings, openDataManagement,
   setLang, setTheme, clearCurrentConversation, chatSessions, taskQueue, favorites,
   inputText, voices
 });
@@ -1356,6 +1432,67 @@ provide('appState', {
             <strong>{{ notice.title }}</strong>
             <span>{{ notice.message }}</span>
           </div>
+        </div>
+      </section>
+
+      <section v-else-if="activeView === 'dataManagement'" class="settings-view">
+        <div class="settings-header">
+          <div>
+            <h2>{{ $t("dataManagement.title") }}</h2>
+            <p>{{ $t("dataManagement.desc") }}</p>
+          </div>
+          <div style="display: flex; gap: 8px;">
+            <button class="log-action" :disabled="dataManagementLoading" @click="loadDataManagementStatus">
+              {{ $t("apiStatus.refresh") }}
+            </button>
+            <button class="log-action" :disabled="dataManagementLoading" @click="testDataConnection">
+              {{ $t("dataManagement.testConnection") }}
+            </button>
+          </div>
+        </div>
+
+        <div v-if="connectionTestResult" class="home-notice" :class="connectionTestResult.success ? 'notice-success' : 'notice-error'" style="margin-bottom: 20px; display: flex; justify-content: space-between; align-items: center; padding: 12px 16px; border-radius: var(--radius-sm);">
+          <div>
+            <strong style="margin-right: 8px;">{{ connectionTestResult.success ? $t("dataManagement.connectionSuccess") : $t("dataManagement.connectionFailed") }}</strong>
+            <span style="opacity: 0.9;">{{ connectionTestResult.message }}</span>
+          </div>
+          <button class="icon-btn" style="border: none; background: transparent; padding: 4px; color: inherit; cursor: pointer;" @click="connectionTestResult = null">
+            <X :size="14" />
+          </button>
+        </div>
+
+        <div class="settings-grid">
+          <section class="settings-card minimax-card wide-status" style="grid-column: span 2;">
+            <div class="settings-card-head">
+              <strong>{{ $t("dataManagement.currentMode") }}</strong>
+            </div>
+            <div class="provider-toggle">
+              <button class="toggle-pill" :class="{ active: selectedDataMode === 'json' }" :disabled="dataManagementLoading" @click="switchDataSourceMode('json')">
+                {{ $t("dataManagement.jsonMode") }}
+              </button>
+              <button class="toggle-pill" :class="{ active: selectedDataMode === 'postgresql' }" :disabled="dataManagementLoading" @click="switchDataSourceMode('postgresql')">
+                {{ $t("dataManagement.postgresqlMode") }}
+              </button>
+            </div>
+            <p style="font-size: 13px; color: var(--text-muted);">{{ dataManagementStatus?.postgresql?.message || $t("dataManagement.postgresqlUnavailable") }}</p>
+          </section>
+
+          <section v-for="card in dataFileCards" :key="card.key" class="settings-card">
+            <div class="settings-card-head">
+              <strong>{{ card.label }}</strong>
+              <span :class="card.info.exists ? 'active' : 'inactive'">{{ card.info.exists ? $t("dataManagement.exists") : $t("dataManagement.missing") }}</span>
+            </div>
+            <p style="font-size: 13px; color: var(--text-muted); margin-top: 8px;">{{ card.info.recordCount || 0 }} {{ $t("dataManagement.records") }}</p>
+            <small style="display: block; margin-top: 12px; font-size: 11px; word-break: break-all; opacity: 0.7;">{{ card.info.path || "" }}</small>
+          </section>
+
+          <section class="settings-card">
+            <div class="settings-card-head">
+              <strong>{{ $t("dataManagement.postgresqlStatus") }}</strong>
+              <span :class="dataManagementStatus?.postgresql?.ready ? 'active' : 'inactive'">{{ dataManagementStatus?.postgresql?.ready ? $t("apiStatus.statusOk") : $t("apiStatus.statusPending") }}</span>
+            </div>
+            <p style="font-size: 13px; color: var(--text-muted); margin-top: 8px;">{{ dataManagementStatus?.postgresql?.message || $t("dataManagement.postgresqlUnavailable") }}</p>
+          </section>
         </div>
       </section>
 
@@ -4261,5 +4398,54 @@ provide('appState', {
   color: var(--accent);
   border-color: var(--accent-border);
   background: var(--accent-soft);
+}
+
+/* ── Data Source Switcher Toggle Pills ────────── */
+.provider-toggle {
+  display: inline-flex;
+  background: var(--bg-input, rgba(255, 255, 255, 0.02));
+  border: 1px solid var(--border);
+  padding: 4px;
+  border-radius: var(--radius-sm, 6px);
+  gap: 4px;
+  margin: 12px 0;
+  box-shadow: var(--shadow-sm);
+  transition: all 0.25s ease;
+}
+
+.provider-toggle:hover {
+  border-color: var(--border-hover);
+}
+
+.toggle-pill {
+  background: transparent;
+  border: 1px solid transparent;
+  color: var(--text-muted);
+  padding: 6px 14px;
+  border-radius: calc(var(--radius-sm, 6px) - 2px);
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.toggle-pill:hover:not(:disabled) {
+  color: var(--text-primary);
+  background: rgba(255, 255, 255, 0.04);
+}
+
+.toggle-pill.active {
+  background: var(--accent, #5b7cff);
+  border-color: var(--accent-border, rgba(91, 124, 255, 0.3));
+  color: #ffffff;
+  box-shadow: 0 2px 8px var(--accent-soft, rgba(91, 124, 255, 0.15));
+}
+
+.toggle-pill:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
 }
 </style>

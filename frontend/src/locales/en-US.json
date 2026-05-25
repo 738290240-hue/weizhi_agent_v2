@@ -22,7 +22,8 @@
     "clearSession": "Clear Session",
     "translation": "Translation",
     "openaiSession": "OpenAI Session",
-    "openaiDesc": "Green AI Channel"
+    "openaiDesc": "Green AI Channel",
+    "dataManagement": "Data Management"
   },
   "theme": {
     "midnight": "Midnight Blue",
@@ -333,5 +334,26 @@
     "historyTitle": "History",
     "emptyHistory": "No translation history",
     "toggleHistory": "History"
+  },
+  "dataManagement": {
+    "title": "Data Management",
+    "desc": "Choose the local data source, inspect JSON file status, and prepare for PostgreSQL database mode.",
+    "currentMode": "Current data source",
+    "jsonMode": "JSON Files",
+    "postgresqlMode": "PostgreSQL",
+    "jsonStatus": "JSON File Status",
+    "postgresqlStatus": "PostgreSQL Status",
+    "settingsFile": "Settings File",
+    "imageHistory": "Image History",
+    "ttsHistory": "TTS History",
+    "exists": "Exists",
+    "missing": "Missing",
+    "records": "records",
+    "testConnection": "Test Connection",
+    "switchSuccess": "Data source switched",
+    "switchFailed": "Data source switch failed",
+    "connectionSuccess": "Connection available",
+    "connectionFailed": "Connection unavailable",
+    "postgresqlUnavailable": "PostgreSQL mode will be enabled after database storage is implemented."
   }
 }

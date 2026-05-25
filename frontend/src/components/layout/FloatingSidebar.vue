@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { inject } from 'vue';
-import { Terminal, Home, Bell, BookOpen, Activity, FolderOpen, Star, Wrench, Download, FileText, Settings, History, Trash2, Cpu, Image as ImageIcon, Volume2 } from 'lucide-vue-next';
+import { Terminal, Home, Bell, BookOpen, Activity, FolderOpen, Star, Wrench, Download, FileText, Settings, History, Trash2, Cpu, Image as ImageIcon, Volume2, Database } from 'lucide-vue-next';
 
 // Inject all required state and methods from App.vue
 const appState = inject<any>('appState');
@@ -58,6 +58,7 @@ const appState = inject<any>('appState');
       <button class="nav-item" :class="{ active: appState.activeView.value === 'exports' }" @click="appState.openExports"><Download :size="16" /> {{ $t('nav.exports') }}</button>
       <button class="nav-item" :class="{ active: appState.activeView.value === 'apiStatus' }" @click="appState.openApiStatus"><Activity :size="16" /> {{ $t('nav.apiStatus') }}</button>
       <button class="nav-item" :class="{ active: appState.activeView.value === 'logs' }" @click="appState.openLogs"><FileText :size="16" /> {{ $t('nav.logs') }}</button>
+      <button class="nav-item" :class="{ active: appState.activeView.value === 'dataManagement' }" @click="appState.openDataManagement"><Database :size="16" /> {{ $t('nav.dataManagement') }}</button>
       <button class="nav-item" :class="{ active: appState.activeView.value === 'settings' }" @click="appState.openSettings"><Settings :size="16" /> {{ $t('nav.settings') }}</button>
     </div>
     

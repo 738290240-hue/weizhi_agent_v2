@@ -6,7 +6,7 @@ import AppBackground from './components/layout/AppBackground.vue';
 import FloatingSidebar from './components/layout/FloatingSidebar.vue';
 import FloatingMainPanel from './components/layout/FloatingMainPanel.vue';
 import TranslationView from './components/chat/TranslationView.vue';
-import { systemApi, settingsApi, chatApi, deepSeekApi, openaiApi, imageApi, ttsApi } from "./utils/api";
+import { systemApi, settingsApi, chatApi, deepSeekApi, openaiApi, imageApi, ttsApi, dataManagementApi } from "./utils/api";
 import { resolveApiUrl } from "./utils/urlUtils";
 import { Terminal, Send, Trash2, Cpu, Volume2, RefreshCw, Activity, Star, Download, X, ChevronDown, ChevronUp, Square, Copy, Check } from "lucide-vue-next";
 const logs = ref([]);
@@ -157,6 +157,18 @@ const deepSeekUsage = ref(null);
 const accountLoading = ref(false);
 const settingsLoading = ref(false);
 const settingsState = ref({});
+const dataManagementStatus = ref(null);
+const dataManagementLoading = ref(false);
+const selectedDataMode = ref("json");
+const connectionTestResult = ref(null);
+const dataFileCards = computed(() => {
+    const json = dataManagementStatus.value?.json || {};
+    return [
+        { key: "settings", label: t("dataManagement.settingsFile"), info: json.settings || {} },
+        { key: "imageHistory", label: t("dataManagement.imageHistory"), info: json.imageHistory || {} },
+        { key: "ttsHistory", label: t("dataManagement.ttsHistory"), info: json.ttsHistory || {} }
+    ];
+});
 const settingsDraft = ref({
     minimax: { apiKey: "", model: "" },
     deepseek: { apiKey: "", model: "" },
@@ -1206,6 +1218,68 @@ const openSettings = () => {
     activeView.value = "settings";
     loadSettings();
 };
+const loadDataManagementStatus = async () => {
+    dataManagementLoading.value = true;
+    try {
+        const res = await dataManagementApi.status();
+        dataManagementStatus.value = res.data;
+        selectedDataMode.value = res.data?.mode || "json";
+    }
+    catch (err) {
+        addNotification("error", t("dataManagement.connectionFailed"), err?.message || "unknown error");
+    }
+    finally {
+        dataManagementLoading.value = false;
+    }
+};
+const switchDataSourceMode = async (mode) => {
+    selectedDataMode.value = mode;
+    dataManagementLoading.value = true;
+    connectionTestResult.value = null;
+    try {
+        const res = await dataManagementApi.switchMode(mode);
+        if (res.data?.status)
+            dataManagementStatus.value = res.data.status;
+        selectedDataMode.value = res.data?.mode || dataManagementStatus.value?.mode || "json";
+        const success = res.data?.success || false;
+        const message = res.data?.message || "";
+        connectionTestResult.value = { success, message };
+        addNotification(success ? "success" : "warning", success ? t("dataManagement.switchSuccess") : t("dataManagement.switchFailed"), message);
+    }
+    catch (err) {
+        selectedDataMode.value = dataManagementStatus.value?.mode || "json";
+        const message = err?.message || "unknown error";
+        connectionTestResult.value = { success: false, message };
+        addNotification("error", t("dataManagement.switchFailed"), message);
+    }
+    finally {
+        dataManagementLoading.value = false;
+    }
+};
+const testDataConnection = async () => {
+    dataManagementLoading.value = true;
+    connectionTestResult.value = null;
+    try {
+        const res = await dataManagementApi.testConnection(selectedDataMode.value);
+        const success = res.data?.success || false;
+        const message = res.data?.message || "";
+        connectionTestResult.value = { success, message };
+        addNotification(success ? "success" : "warning", success ? t("dataManagement.connectionSuccess") : t("dataManagement.connectionFailed"), message);
+        await loadDataManagementStatus();
+    }
+    catch (err) {
+        const message = err?.message || "unknown error";
+        connectionTestResult.value = { success: false, message };
+        addNotification("error", t("dataManagement.connectionFailed"), message);
+    }
+    finally {
+        dataManagementLoading.value = false;
+    }
+};
+const openDataManagement = () => {
+    activeView.value = "dataManagement";
+    loadDataManagementStatus();
+};
 const clearCurrentConversation = () => {
     if (activeProvider.value === "minimax")
         minimaxMessages.value = [];
@@ -1270,7 +1344,7 @@ const usePromptTemplate = (template) => {
 provide('appState', {
     activeView, activeProvider, showMiniMaxSubnav, unreadNotificationCount, currentTheme, locale,
     openHome, switchProvider, openSpeech, openMiniMaxHistory, markNotificationsRead,
-    openAssets, openDiagnostics, openExports, openApiStatus, openLogs, openSettings,
+    openAssets, openDiagnostics, openExports, openApiStatus, openLogs, openSettings, openDataManagement,
     setLang, setTheme, clearCurrentConversation, chatSessions, taskQueue, favorites,
     inputText, voices
 });
@@ -1400,6 +1474,157 @@ if (__VLS_ctx.activeView === 'home') {
         }
     }
 }
+else if (__VLS_ctx.activeView === 'dataManagement') {
+    __VLS_asFunctionalElement(__VLS_intrinsicElements.section, __VLS_intrinsicElements.section)({
+        ...{ class: "settings-view" },
+    });
+    __VLS_asFunctionalElement(__VLS_intrinsicElements.div, __VLS_intrinsicElements.div)({
+        ...{ class: "settings-header" },
+    });
+    __VLS_asFunctionalElement(__VLS_intrinsicElements.div, __VLS_intrinsicElements.div)({});
+    __VLS_asFunctionalElement(__VLS_intrinsicElements.h2, __VLS_intrinsicElements.h2)({});
+    (__VLS_ctx.$t("dataManagement.title"));
+    __VLS_asFunctionalElement(__VLS_intrinsicElements.p, __VLS_intrinsicElements.p)({});
+    (__VLS_ctx.$t("dataManagement.desc"));
+    __VLS_asFunctionalElement(__VLS_intrinsicElements.div, __VLS_intrinsicElements.div)({
+        ...{ style: {} },
+    });
+    __VLS_asFunctionalElement(__VLS_intrinsicElements.button, __VLS_intrinsicElements.button)({
+        ...{ onClick: (__VLS_ctx.loadDataManagementStatus) },
+        ...{ class: "log-action" },
+        disabled: (__VLS_ctx.dataManagementLoading),
+    });
+    (__VLS_ctx.$t("apiStatus.refresh"));
+    __VLS_asFunctionalElement(__VLS_intrinsicElements.button, __VLS_intrinsicElements.button)({
+        ...{ onClick: (__VLS_ctx.testDataConnection) },
+        ...{ class: "log-action" },
+        disabled: (__VLS_ctx.dataManagementLoading),
+    });
+    (__VLS_ctx.$t("dataManagement.testConnection"));
+    if (__VLS_ctx.connectionTestResult) {
+        __VLS_asFunctionalElement(__VLS_intrinsicElements.div, __VLS_intrinsicElements.div)({
+            ...{ class: "home-notice" },
+            ...{ class: (__VLS_ctx.connectionTestResult.success ? 'notice-success' : 'notice-error') },
+            ...{ style: {} },
+        });
+        __VLS_asFunctionalElement(__VLS_intrinsicElements.div, __VLS_intrinsicElements.div)({});
+        __VLS_asFunctionalElement(__VLS_intrinsicElements.strong, __VLS_intrinsicElements.strong)({
+            ...{ style: {} },
+        });
+        (__VLS_ctx.connectionTestResult.success ? __VLS_ctx.$t("dataManagement.connectionSuccess") : __VLS_ctx.$t("dataManagement.connectionFailed"));
+        __VLS_asFunctionalElement(__VLS_intrinsicElements.span, __VLS_intrinsicElements.span)({
+            ...{ style: {} },
+        });
+        (__VLS_ctx.connectionTestResult.message);
+        __VLS_asFunctionalElement(__VLS_intrinsicElements.button, __VLS_intrinsicElements.button)({
+            ...{ onClick: (...[$event]) => {
+                    if (!!(__VLS_ctx.activeView === 'home'))
+                        return;
+                    if (!(__VLS_ctx.activeView === 'dataManagement'))
+                        return;
+                    if (!(__VLS_ctx.connectionTestResult))
+                        return;
+                    __VLS_ctx.connectionTestResult = null;
+                } },
+            ...{ class: "icon-btn" },
+            ...{ style: {} },
+        });
+        const __VLS_13 = {}.X;
+        /** @type {[typeof __VLS_components.X, ]} */ ;
+        // @ts-ignore
+        const __VLS_14 = __VLS_asFunctionalComponent(__VLS_13, new __VLS_13({
+            size: (14),
+        }));
+        const __VLS_15 = __VLS_14({
+            size: (14),
+        }, ...__VLS_functionalComponentArgsRest(__VLS_14));
+    }
+    __VLS_asFunctionalElement(__VLS_intrinsicElements.div, __VLS_intrinsicElements.div)({
+        ...{ class: "settings-grid" },
+    });
+    __VLS_asFunctionalElement(__VLS_intrinsicElements.section, __VLS_intrinsicElements.section)({
+        ...{ class: "settings-card minimax-card wide-status" },
+        ...{ style: {} },
+    });
+    __VLS_asFunctionalElement(__VLS_intrinsicElements.div, __VLS_intrinsicElements.div)({
+        ...{ class: "settings-card-head" },
+    });
+    __VLS_asFunctionalElement(__VLS_intrinsicElements.strong, __VLS_intrinsicElements.strong)({});
+    (__VLS_ctx.$t("dataManagement.currentMode"));
+    __VLS_asFunctionalElement(__VLS_intrinsicElements.div, __VLS_intrinsicElements.div)({
+        ...{ class: "provider-toggle" },
+    });
+    __VLS_asFunctionalElement(__VLS_intrinsicElements.button, __VLS_intrinsicElements.button)({
+        ...{ onClick: (...[$event]) => {
+                if (!!(__VLS_ctx.activeView === 'home'))
+                    return;
+                if (!(__VLS_ctx.activeView === 'dataManagement'))
+                    return;
+                __VLS_ctx.switchDataSourceMode('json');
+            } },
+        ...{ class: "toggle-pill" },
+        ...{ class: ({ active: __VLS_ctx.selectedDataMode === 'json' }) },
+        disabled: (__VLS_ctx.dataManagementLoading),
+    });
+    (__VLS_ctx.$t("dataManagement.jsonMode"));
+    __VLS_asFunctionalElement(__VLS_intrinsicElements.button, __VLS_intrinsicElements.button)({
+        ...{ onClick: (...[$event]) => {
+                if (!!(__VLS_ctx.activeView === 'home'))
+                    return;
+                if (!(__VLS_ctx.activeView === 'dataManagement'))
+                    return;
+                __VLS_ctx.switchDataSourceMode('postgresql');
+            } },
+        ...{ class: "toggle-pill" },
+        ...{ class: ({ active: __VLS_ctx.selectedDataMode === 'postgresql' }) },
+        disabled: (__VLS_ctx.dataManagementLoading),
+    });
+    (__VLS_ctx.$t("dataManagement.postgresqlMode"));
+    __VLS_asFunctionalElement(__VLS_intrinsicElements.p, __VLS_intrinsicElements.p)({
+        ...{ style: {} },
+    });
+    (__VLS_ctx.dataManagementStatus?.postgresql?.message || __VLS_ctx.$t("dataManagement.postgresqlUnavailable"));
+    for (const [card] of __VLS_getVForSourceType((__VLS_ctx.dataFileCards))) {
+        __VLS_asFunctionalElement(__VLS_intrinsicElements.section, __VLS_intrinsicElements.section)({
+            key: (card.key),
+            ...{ class: "settings-card" },
+        });
+        __VLS_asFunctionalElement(__VLS_intrinsicElements.div, __VLS_intrinsicElements.div)({
+            ...{ class: "settings-card-head" },
+        });
+        __VLS_asFunctionalElement(__VLS_intrinsicElements.strong, __VLS_intrinsicElements.strong)({});
+        (card.label);
+        __VLS_asFunctionalElement(__VLS_intrinsicElements.span, __VLS_intrinsicElements.span)({
+            ...{ class: (card.info.exists ? 'active' : 'inactive') },
+        });
+        (card.info.exists ? __VLS_ctx.$t("dataManagement.exists") : __VLS_ctx.$t("dataManagement.missing"));
+        __VLS_asFunctionalElement(__VLS_intrinsicElements.p, __VLS_intrinsicElements.p)({
+            ...{ style: {} },
+        });
+        (card.info.recordCount || 0);
+        (__VLS_ctx.$t("dataManagement.records"));
+        __VLS_asFunctionalElement(__VLS_intrinsicElements.small, __VLS_intrinsicElements.small)({
+            ...{ style: {} },
+        });
+        (card.info.path || "");
+    }
+    __VLS_asFunctionalElement(__VLS_intrinsicElements.section, __VLS_intrinsicElements.section)({
+        ...{ class: "settings-card" },
+    });
+    __VLS_asFunctionalElement(__VLS_intrinsicElements.div, __VLS_intrinsicElements.div)({
+        ...{ class: "settings-card-head" },
+    });
+    __VLS_asFunctionalElement(__VLS_intrinsicElements.strong, __VLS_intrinsicElements.strong)({});
+    (__VLS_ctx.$t("dataManagement.postgresqlStatus"));
+    __VLS_asFunctionalElement(__VLS_intrinsicElements.span, __VLS_intrinsicElements.span)({
+        ...{ class: (__VLS_ctx.dataManagementStatus?.postgresql?.ready ? 'active' : 'inactive') },
+    });
+    (__VLS_ctx.dataManagementStatus?.postgresql?.ready ? __VLS_ctx.$t("apiStatus.statusOk") : __VLS_ctx.$t("apiStatus.statusPending"));
+    __VLS_asFunctionalElement(__VLS_intrinsicElements.p, __VLS_intrinsicElements.p)({
+        ...{ style: {} },
+    });
+    (__VLS_ctx.dataManagementStatus?.postgresql?.message || __VLS_ctx.$t("dataManagement.postgresqlUnavailable"));
+}
 else if (__VLS_ctx.activeView === 'settings') {
     __VLS_asFunctionalElement(__VLS_intrinsicElements.section, __VLS_intrinsicElements.section)({
         ...{ class: "settings-view" },
@@ -1418,15 +1643,15 @@ else if (__VLS_ctx.activeView === 'settings') {
         title: (__VLS_ctx.$t('settings.refresh')),
         disabled: (__VLS_ctx.settingsLoading),
     });
-    const __VLS_13 = {}.RefreshCw;
+    const __VLS_17 = {}.RefreshCw;
     /** @type {[typeof __VLS_components.RefreshCw, ]} */ ;
     // @ts-ignore
-    const __VLS_14 = __VLS_asFunctionalComponent(__VLS_13, new __VLS_13({
+    const __VLS_18 = __VLS_asFunctionalComponent(__VLS_17, new __VLS_17({
         size: (15),
     }));
-    const __VLS_15 = __VLS_14({
+    const __VLS_19 = __VLS_18({
         size: (15),
-    }, ...__VLS_functionalComponentArgsRest(__VLS_14));
+    }, ...__VLS_functionalComponentArgsRest(__VLS_18));
     __VLS_asFunctionalElement(__VLS_intrinsicElements.div, __VLS_intrinsicElements.div)({
         ...{ class: "settings-grid" },
     });
@@ -1464,6 +1689,8 @@ else if (__VLS_ctx.activeView === 'settings') {
         ...{ onClick: (...[$event]) => {
                 if (!!(__VLS_ctx.activeView === 'home'))
                     return;
+                if (!!(__VLS_ctx.activeView === 'dataManagement'))
+                    return;
                 if (!(__VLS_ctx.activeView === 'settings'))
                     return;
                 __VLS_ctx.refreshProviderModels('minimax');
@@ -1474,6 +1701,8 @@ else if (__VLS_ctx.activeView === 'settings') {
     __VLS_asFunctionalElement(__VLS_intrinsicElements.button, __VLS_intrinsicElements.button)({
         ...{ onClick: (...[$event]) => {
                 if (!!(__VLS_ctx.activeView === 'home'))
+                    return;
+                if (!!(__VLS_ctx.activeView === 'dataManagement'))
                     return;
                 if (!(__VLS_ctx.activeView === 'settings'))
                     return;
@@ -1517,6 +1746,8 @@ else if (__VLS_ctx.activeView === 'settings') {
         ...{ onClick: (...[$event]) => {
                 if (!!(__VLS_ctx.activeView === 'home'))
                     return;
+                if (!!(__VLS_ctx.activeView === 'dataManagement'))
+                    return;
                 if (!(__VLS_ctx.activeView === 'settings'))
                     return;
                 __VLS_ctx.refreshProviderModels('deepseek');
@@ -1527,6 +1758,8 @@ else if (__VLS_ctx.activeView === 'settings') {
     __VLS_asFunctionalElement(__VLS_intrinsicElements.button, __VLS_intrinsicElements.button)({
         ...{ onClick: (...[$event]) => {
                 if (!!(__VLS_ctx.activeView === 'home'))
+                    return;
+                if (!!(__VLS_ctx.activeView === 'dataManagement'))
                     return;
                 if (!(__VLS_ctx.activeView === 'settings'))
                     return;
@@ -1580,6 +1813,8 @@ else if (__VLS_ctx.activeView === 'settings') {
         ...{ onClick: (...[$event]) => {
                 if (!!(__VLS_ctx.activeView === 'home'))
                     return;
+                if (!!(__VLS_ctx.activeView === 'dataManagement'))
+                    return;
                 if (!(__VLS_ctx.activeView === 'settings'))
                     return;
                 __VLS_ctx.refreshProviderModels('openai');
@@ -1590,6 +1825,8 @@ else if (__VLS_ctx.activeView === 'settings') {
     __VLS_asFunctionalElement(__VLS_intrinsicElements.button, __VLS_intrinsicElements.button)({
         ...{ onClick: (...[$event]) => {
                 if (!!(__VLS_ctx.activeView === 'home'))
+                    return;
+                if (!!(__VLS_ctx.activeView === 'dataManagement'))
                     return;
                 if (!(__VLS_ctx.activeView === 'settings'))
                     return;
@@ -1722,6 +1959,8 @@ else if (__VLS_ctx.activeView === 'speech') {
         ...{ onClick: (...[$event]) => {
                 if (!!(__VLS_ctx.activeView === 'home'))
                     return;
+                if (!!(__VLS_ctx.activeView === 'dataManagement'))
+                    return;
                 if (!!(__VLS_ctx.activeView === 'settings'))
                     return;
                 if (!!(__VLS_ctx.activeView === 'logs'))
@@ -1768,6 +2007,8 @@ else if (__VLS_ctx.activeView === 'speech') {
             ...{ onClick: (...[$event]) => {
                     if (!!(__VLS_ctx.activeView === 'home'))
                         return;
+                    if (!!(__VLS_ctx.activeView === 'dataManagement'))
+                        return;
                     if (!!(__VLS_ctx.activeView === 'settings'))
                         return;
                     if (!!(__VLS_ctx.activeView === 'logs'))
@@ -1793,6 +2034,8 @@ else if (__VLS_ctx.activeView === 'speech') {
         __VLS_asFunctionalElement(__VLS_intrinsicElements.button, __VLS_intrinsicElements.button)({
             ...{ onClick: (...[$event]) => {
                     if (!!(__VLS_ctx.activeView === 'home'))
+                        return;
+                    if (!!(__VLS_ctx.activeView === 'dataManagement'))
                         return;
                     if (!!(__VLS_ctx.activeView === 'settings'))
                         return;
@@ -1823,6 +2066,8 @@ else if (__VLS_ctx.activeView === 'speech') {
             ...{ onClick: (...[$event]) => {
                     if (!!(__VLS_ctx.activeView === 'home'))
                         return;
+                    if (!!(__VLS_ctx.activeView === 'dataManagement'))
+                        return;
                     if (!!(__VLS_ctx.activeView === 'settings'))
                         return;
                     if (!!(__VLS_ctx.activeView === 'logs'))
@@ -1845,6 +2090,8 @@ else if (__VLS_ctx.activeView === 'speech') {
         __VLS_asFunctionalElement(__VLS_intrinsicElements.div, __VLS_intrinsicElements.div)({
             ...{ onClick: (...[$event]) => {
                     if (!!(__VLS_ctx.activeView === 'home'))
+                        return;
+                    if (!!(__VLS_ctx.activeView === 'dataManagement'))
                         return;
                     if (!!(__VLS_ctx.activeView === 'settings'))
                         return;
@@ -2000,6 +2247,8 @@ else if (__VLS_ctx.activeView === 'speech') {
                 ...{ onClick: (...[$event]) => {
                         if (!!(__VLS_ctx.activeView === 'home'))
                             return;
+                        if (!!(__VLS_ctx.activeView === 'dataManagement'))
+                            return;
                         if (!!(__VLS_ctx.activeView === 'settings'))
                             return;
                         if (!!(__VLS_ctx.activeView === 'logs'))
@@ -2013,18 +2262,20 @@ else if (__VLS_ctx.activeView === 'speech') {
                 ...{ class: "icon-btn-small" },
                 title: (__VLS_ctx.$t('assets.favorite')),
             });
-            const __VLS_17 = {}.Star;
+            const __VLS_21 = {}.Star;
             /** @type {[typeof __VLS_components.Star, ]} */ ;
             // @ts-ignore
-            const __VLS_18 = __VLS_asFunctionalComponent(__VLS_17, new __VLS_17({
+            const __VLS_22 = __VLS_asFunctionalComponent(__VLS_21, new __VLS_21({
                 size: (12),
             }));
-            const __VLS_19 = __VLS_18({
+            const __VLS_23 = __VLS_22({
                 size: (12),
-            }, ...__VLS_functionalComponentArgsRest(__VLS_18));
+            }, ...__VLS_functionalComponentArgsRest(__VLS_22));
             __VLS_asFunctionalElement(__VLS_intrinsicElements.button, __VLS_intrinsicElements.button)({
                 ...{ onClick: (...[$event]) => {
                         if (!!(__VLS_ctx.activeView === 'home'))
+                            return;
+                        if (!!(__VLS_ctx.activeView === 'dataManagement'))
                             return;
                         if (!!(__VLS_ctx.activeView === 'settings'))
                             return;
@@ -2039,18 +2290,20 @@ else if (__VLS_ctx.activeView === 'speech') {
                 ...{ class: "icon-btn-small" },
                 title: (__VLS_ctx.$t('assets.download')),
             });
-            const __VLS_21 = {}.Download;
+            const __VLS_25 = {}.Download;
             /** @type {[typeof __VLS_components.Download, ]} */ ;
             // @ts-ignore
-            const __VLS_22 = __VLS_asFunctionalComponent(__VLS_21, new __VLS_21({
+            const __VLS_26 = __VLS_asFunctionalComponent(__VLS_25, new __VLS_25({
                 size: (12),
             }));
-            const __VLS_23 = __VLS_22({
+            const __VLS_27 = __VLS_26({
                 size: (12),
-            }, ...__VLS_functionalComponentArgsRest(__VLS_22));
+            }, ...__VLS_functionalComponentArgsRest(__VLS_26));
             __VLS_asFunctionalElement(__VLS_intrinsicElements.button, __VLS_intrinsicElements.button)({
                 ...{ onClick: (...[$event]) => {
                         if (!!(__VLS_ctx.activeView === 'home'))
+                            return;
+                        if (!!(__VLS_ctx.activeView === 'dataManagement'))
                             return;
                         if (!!(__VLS_ctx.activeView === 'settings'))
                             return;
@@ -2065,15 +2318,15 @@ else if (__VLS_ctx.activeView === 'speech') {
                 ...{ class: "icon-btn-small danger" },
                 title: (__VLS_ctx.$t('chat.delete')),
             });
-            const __VLS_25 = {}.Trash2;
+            const __VLS_29 = {}.Trash2;
             /** @type {[typeof __VLS_components.Trash2, ]} */ ;
             // @ts-ignore
-            const __VLS_26 = __VLS_asFunctionalComponent(__VLS_25, new __VLS_25({
+            const __VLS_30 = __VLS_asFunctionalComponent(__VLS_29, new __VLS_29({
                 size: (12),
             }));
-            const __VLS_27 = __VLS_26({
+            const __VLS_31 = __VLS_30({
                 size: (12),
-            }, ...__VLS_functionalComponentArgsRest(__VLS_26));
+            }, ...__VLS_functionalComponentArgsRest(__VLS_30));
         }
     }
     else {
@@ -2086,8 +2339,8 @@ else if (__VLS_ctx.activeView === 'speech') {
 else if (__VLS_ctx.activeView === 'translation') {
     /** @type {[typeof TranslationView, ]} */ ;
     // @ts-ignore
-    const __VLS_29 = __VLS_asFunctionalComponent(TranslationView, new TranslationView({}));
-    const __VLS_30 = __VLS_29({}, ...__VLS_functionalComponentArgsRest(__VLS_29));
+    const __VLS_33 = __VLS_asFunctionalComponent(TranslationView, new TranslationView({}));
+    const __VLS_34 = __VLS_33({}, ...__VLS_functionalComponentArgsRest(__VLS_33));
 }
 else if (__VLS_ctx.activeView === 'sessions') {
     __VLS_asFunctionalElement(__VLS_intrinsicElements.section, __VLS_intrinsicElements.section)({
@@ -2108,6 +2361,8 @@ else if (__VLS_ctx.activeView === 'sessions') {
         ...{ onClick: (...[$event]) => {
                 if (!!(__VLS_ctx.activeView === 'home'))
                     return;
+                if (!!(__VLS_ctx.activeView === 'dataManagement'))
+                    return;
                 if (!!(__VLS_ctx.activeView === 'settings'))
                     return;
                 if (!!(__VLS_ctx.activeView === 'logs'))
@@ -2126,6 +2381,8 @@ else if (__VLS_ctx.activeView === 'sessions') {
     __VLS_asFunctionalElement(__VLS_intrinsicElements.button, __VLS_intrinsicElements.button)({
         ...{ onClick: (...[$event]) => {
                 if (!!(__VLS_ctx.activeView === 'home'))
+                    return;
+                if (!!(__VLS_ctx.activeView === 'dataManagement'))
                     return;
                 if (!!(__VLS_ctx.activeView === 'settings'))
                     return;
@@ -2169,6 +2426,8 @@ else if (__VLS_ctx.activeView === 'sessions') {
             ...{ onClick: (...[$event]) => {
                     if (!!(__VLS_ctx.activeView === 'home'))
                         return;
+                    if (!!(__VLS_ctx.activeView === 'dataManagement'))
+                        return;
                     if (!!(__VLS_ctx.activeView === 'settings'))
                         return;
                     if (!!(__VLS_ctx.activeView === 'logs'))
@@ -2188,6 +2447,8 @@ else if (__VLS_ctx.activeView === 'sessions') {
             ...{ onClick: (...[$event]) => {
                     if (!!(__VLS_ctx.activeView === 'home'))
                         return;
+                    if (!!(__VLS_ctx.activeView === 'dataManagement'))
+                        return;
                     if (!!(__VLS_ctx.activeView === 'settings'))
                         return;
                     if (!!(__VLS_ctx.activeView === 'logs'))
@@ -2206,6 +2467,8 @@ else if (__VLS_ctx.activeView === 'sessions') {
         __VLS_asFunctionalElement(__VLS_intrinsicElements.button, __VLS_intrinsicElements.button)({
             ...{ onClick: (...[$event]) => {
                     if (!!(__VLS_ctx.activeView === 'home'))
+                        return;
+                    if (!!(__VLS_ctx.activeView === 'dataManagement'))
                         return;
                     if (!!(__VLS_ctx.activeView === 'settings'))
                         return;
@@ -2297,6 +2560,8 @@ else if (__VLS_ctx.activeView === 'notifications') {
         ...{ onClick: (...[$event]) => {
                 if (!!(__VLS_ctx.activeView === 'home'))
                     return;
+                if (!!(__VLS_ctx.activeView === 'dataManagement'))
+                    return;
                 if (!!(__VLS_ctx.activeView === 'settings'))
                     return;
                 if (!!(__VLS_ctx.activeView === 'logs'))
@@ -2337,6 +2602,8 @@ else if (__VLS_ctx.activeView === 'notifications') {
             ...{ onClick: (...[$event]) => {
                     if (!!(__VLS_ctx.activeView === 'home'))
                         return;
+                    if (!!(__VLS_ctx.activeView === 'dataManagement'))
+                        return;
                     if (!!(__VLS_ctx.activeView === 'settings'))
                         return;
                     if (!!(__VLS_ctx.activeView === 'logs'))
@@ -2355,15 +2622,15 @@ else if (__VLS_ctx.activeView === 'notifications') {
                 } },
             ...{ class: "icon-btn" },
         });
-        const __VLS_32 = {}.X;
+        const __VLS_36 = {}.X;
         /** @type {[typeof __VLS_components.X, ]} */ ;
         // @ts-ignore
-        const __VLS_33 = __VLS_asFunctionalComponent(__VLS_32, new __VLS_32({
+        const __VLS_37 = __VLS_asFunctionalComponent(__VLS_36, new __VLS_36({
             size: (14),
         }));
-        const __VLS_34 = __VLS_33({
+        const __VLS_38 = __VLS_37({
             size: (14),
-        }, ...__VLS_functionalComponentArgsRest(__VLS_33));
+        }, ...__VLS_functionalComponentArgsRest(__VLS_37));
     }
     if (!__VLS_ctx.notifications.length) {
         __VLS_asFunctionalElement(__VLS_intrinsicElements.div, __VLS_intrinsicElements.div)({
@@ -2440,6 +2707,8 @@ else if (__VLS_ctx.activeView === 'prompts') {
             ...{ onClick: (...[$event]) => {
                     if (!!(__VLS_ctx.activeView === 'home'))
                         return;
+                    if (!!(__VLS_ctx.activeView === 'dataManagement'))
+                        return;
                     if (!!(__VLS_ctx.activeView === 'settings'))
                         return;
                     if (!!(__VLS_ctx.activeView === 'logs'))
@@ -2464,6 +2733,8 @@ else if (__VLS_ctx.activeView === 'prompts') {
         __VLS_asFunctionalElement(__VLS_intrinsicElements.button, __VLS_intrinsicElements.button)({
             ...{ onClick: (...[$event]) => {
                     if (!!(__VLS_ctx.activeView === 'home'))
+                        return;
+                    if (!!(__VLS_ctx.activeView === 'dataManagement'))
                         return;
                     if (!!(__VLS_ctx.activeView === 'settings'))
                         return;
@@ -2587,6 +2858,8 @@ else if (__VLS_ctx.activeView === 'assets') {
         ...{ onClick: (...[$event]) => {
                 if (!!(__VLS_ctx.activeView === 'home'))
                     return;
+                if (!!(__VLS_ctx.activeView === 'dataManagement'))
+                    return;
                 if (!!(__VLS_ctx.activeView === 'settings'))
                     return;
                 if (!!(__VLS_ctx.activeView === 'logs'))
@@ -2625,6 +2898,8 @@ else if (__VLS_ctx.activeView === 'assets') {
         ...{ onClick: (...[$event]) => {
                 if (!!(__VLS_ctx.activeView === 'home'))
                     return;
+                if (!!(__VLS_ctx.activeView === 'dataManagement'))
+                    return;
                 if (!!(__VLS_ctx.activeView === 'settings'))
                     return;
                 if (!!(__VLS_ctx.activeView === 'logs'))
@@ -2656,6 +2931,8 @@ else if (__VLS_ctx.activeView === 'assets') {
         ...{ onClick: (...[$event]) => {
                 if (!!(__VLS_ctx.activeView === 'home'))
                     return;
+                if (!!(__VLS_ctx.activeView === 'dataManagement'))
+                    return;
                 if (!!(__VLS_ctx.activeView === 'settings'))
                     return;
                 if (!!(__VLS_ctx.activeView === 'logs'))
@@ -2686,6 +2963,8 @@ else if (__VLS_ctx.activeView === 'assets') {
     __VLS_asFunctionalElement(__VLS_intrinsicElements.button, __VLS_intrinsicElements.button)({
         ...{ onClick: (...[$event]) => {
                 if (!!(__VLS_ctx.activeView === 'home'))
+                    return;
+                if (!!(__VLS_ctx.activeView === 'dataManagement'))
                     return;
                 if (!!(__VLS_ctx.activeView === 'settings'))
                     return;
@@ -2742,25 +3021,8 @@ else if (__VLS_ctx.activeView === 'assets') {
                 ...{ onClick: (__VLS_ctx.downloadSelectedAssets) },
                 ...{ class: "log-action" },
             });
-            const __VLS_36 = {}.Download;
+            const __VLS_40 = {}.Download;
             /** @type {[typeof __VLS_components.Download, ]} */ ;
-            // @ts-ignore
-            const __VLS_37 = __VLS_asFunctionalComponent(__VLS_36, new __VLS_36({
-                size: (14),
-            }));
-            const __VLS_38 = __VLS_37({
-                size: (14),
-            }, ...__VLS_functionalComponentArgsRest(__VLS_37));
-            __VLS_asFunctionalElement(__VLS_intrinsicElements.span, __VLS_intrinsicElements.span)({
-                ...{ style: {} },
-            });
-            (__VLS_ctx.$t("assets.batchDownload"));
-            __VLS_asFunctionalElement(__VLS_intrinsicElements.button, __VLS_intrinsicElements.button)({
-                ...{ onClick: (__VLS_ctx.deleteSelectedAssets) },
-                ...{ class: "log-action danger" },
-            });
-            const __VLS_40 = {}.Trash2;
-            /** @type {[typeof __VLS_components.Trash2, ]} */ ;
             // @ts-ignore
             const __VLS_41 = __VLS_asFunctionalComponent(__VLS_40, new __VLS_40({
                 size: (14),
@@ -2771,10 +3033,29 @@ else if (__VLS_ctx.activeView === 'assets') {
             __VLS_asFunctionalElement(__VLS_intrinsicElements.span, __VLS_intrinsicElements.span)({
                 ...{ style: {} },
             });
+            (__VLS_ctx.$t("assets.batchDownload"));
+            __VLS_asFunctionalElement(__VLS_intrinsicElements.button, __VLS_intrinsicElements.button)({
+                ...{ onClick: (__VLS_ctx.deleteSelectedAssets) },
+                ...{ class: "log-action danger" },
+            });
+            const __VLS_44 = {}.Trash2;
+            /** @type {[typeof __VLS_components.Trash2, ]} */ ;
+            // @ts-ignore
+            const __VLS_45 = __VLS_asFunctionalComponent(__VLS_44, new __VLS_44({
+                size: (14),
+            }));
+            const __VLS_46 = __VLS_45({
+                size: (14),
+            }, ...__VLS_functionalComponentArgsRest(__VLS_45));
+            __VLS_asFunctionalElement(__VLS_intrinsicElements.span, __VLS_intrinsicElements.span)({
+                ...{ style: {} },
+            });
             (__VLS_ctx.$t("assets.batchDelete"));
             __VLS_asFunctionalElement(__VLS_intrinsicElements.button, __VLS_intrinsicElements.button)({
                 ...{ onClick: (...[$event]) => {
                         if (!!(__VLS_ctx.activeView === 'home'))
+                            return;
+                        if (!!(__VLS_ctx.activeView === 'dataManagement'))
                             return;
                         if (!!(__VLS_ctx.activeView === 'settings'))
                             return;
@@ -2818,6 +3099,8 @@ else if (__VLS_ctx.activeView === 'assets') {
             ...{ onClick: (...[$event]) => {
                     if (!!(__VLS_ctx.activeView === 'home'))
                         return;
+                    if (!!(__VLS_ctx.activeView === 'dataManagement'))
+                        return;
                     if (!!(__VLS_ctx.activeView === 'settings'))
                         return;
                     if (!!(__VLS_ctx.activeView === 'logs'))
@@ -2847,6 +3130,8 @@ else if (__VLS_ctx.activeView === 'assets') {
         __VLS_asFunctionalElement(__VLS_intrinsicElements.input)({
             ...{ onClick: (...[$event]) => {
                     if (!!(__VLS_ctx.activeView === 'home'))
+                        return;
+                    if (!!(__VLS_ctx.activeView === 'dataManagement'))
                         return;
                     if (!!(__VLS_ctx.activeView === 'settings'))
                         return;
@@ -2882,6 +3167,8 @@ else if (__VLS_ctx.activeView === 'assets') {
                 ...{ onClick: (...[$event]) => {
                         if (!!(__VLS_ctx.activeView === 'home'))
                             return;
+                        if (!!(__VLS_ctx.activeView === 'dataManagement'))
+                            return;
                         if (!!(__VLS_ctx.activeView === 'settings'))
                             return;
                         if (!!(__VLS_ctx.activeView === 'logs'))
@@ -2916,6 +3203,8 @@ else if (__VLS_ctx.activeView === 'assets') {
                 ...{ onClick: (...[$event]) => {
                         if (!!(__VLS_ctx.activeView === 'home'))
                             return;
+                        if (!!(__VLS_ctx.activeView === 'dataManagement'))
+                            return;
                         if (!!(__VLS_ctx.activeView === 'settings'))
                             return;
                         if (!!(__VLS_ctx.activeView === 'logs'))
@@ -2942,15 +3231,15 @@ else if (__VLS_ctx.activeView === 'assets') {
                     } },
                 ...{ class: "asset-audio-box" },
             });
-            const __VLS_44 = {}.Volume2;
+            const __VLS_48 = {}.Volume2;
             /** @type {[typeof __VLS_components.Volume2, ]} */ ;
             // @ts-ignore
-            const __VLS_45 = __VLS_asFunctionalComponent(__VLS_44, new __VLS_44({
+            const __VLS_49 = __VLS_asFunctionalComponent(__VLS_48, new __VLS_48({
                 size: (30),
             }));
-            const __VLS_46 = __VLS_45({
+            const __VLS_50 = __VLS_49({
                 size: (30),
-            }, ...__VLS_functionalComponentArgsRest(__VLS_45));
+            }, ...__VLS_functionalComponentArgsRest(__VLS_49));
             __VLS_asFunctionalElement(__VLS_intrinsicElements.audio)({
                 ...{ onClick: () => { } },
                 src: (__VLS_ctx.mediaUrl(asset.url)),
@@ -2961,6 +3250,8 @@ else if (__VLS_ctx.activeView === 'assets') {
         __VLS_asFunctionalElement(__VLS_intrinsicElements.div, __VLS_intrinsicElements.div)({
             ...{ onClick: (...[$event]) => {
                     if (!!(__VLS_ctx.activeView === 'home'))
+                        return;
+                    if (!!(__VLS_ctx.activeView === 'dataManagement'))
                         return;
                     if (!!(__VLS_ctx.activeView === 'settings'))
                         return;
@@ -2998,6 +3289,8 @@ else if (__VLS_ctx.activeView === 'assets') {
             ...{ onClick: (...[$event]) => {
                     if (!!(__VLS_ctx.activeView === 'home'))
                         return;
+                    if (!!(__VLS_ctx.activeView === 'dataManagement'))
+                        return;
                     if (!!(__VLS_ctx.activeView === 'settings'))
                         return;
                     if (!!(__VLS_ctx.activeView === 'logs'))
@@ -3026,6 +3319,8 @@ else if (__VLS_ctx.activeView === 'assets') {
         __VLS_asFunctionalElement(__VLS_intrinsicElements.button, __VLS_intrinsicElements.button)({
             ...{ onClick: (...[$event]) => {
                     if (!!(__VLS_ctx.activeView === 'home'))
+                        return;
+                    if (!!(__VLS_ctx.activeView === 'dataManagement'))
                         return;
                     if (!!(__VLS_ctx.activeView === 'settings'))
                         return;
@@ -3056,6 +3351,8 @@ else if (__VLS_ctx.activeView === 'assets') {
             ...{ onClick: (...[$event]) => {
                     if (!!(__VLS_ctx.activeView === 'home'))
                         return;
+                    if (!!(__VLS_ctx.activeView === 'dataManagement'))
+                        return;
                     if (!!(__VLS_ctx.activeView === 'settings'))
                         return;
                     if (!!(__VLS_ctx.activeView === 'logs'))
@@ -3084,6 +3381,8 @@ else if (__VLS_ctx.activeView === 'assets') {
         __VLS_asFunctionalElement(__VLS_intrinsicElements.button, __VLS_intrinsicElements.button)({
             ...{ onClick: (...[$event]) => {
                     if (!!(__VLS_ctx.activeView === 'home'))
+                        return;
+                    if (!!(__VLS_ctx.activeView === 'dataManagement'))
                         return;
                     if (!!(__VLS_ctx.activeView === 'settings'))
                         return;
@@ -3136,6 +3435,8 @@ else if (__VLS_ctx.activeView === 'favorites') {
     __VLS_asFunctionalElement(__VLS_intrinsicElements.button, __VLS_intrinsicElements.button)({
         ...{ onClick: (...[$event]) => {
                 if (!!(__VLS_ctx.activeView === 'home'))
+                    return;
+                if (!!(__VLS_ctx.activeView === 'dataManagement'))
                     return;
                 if (!!(__VLS_ctx.activeView === 'settings'))
                     return;
@@ -3202,6 +3503,8 @@ else if (__VLS_ctx.activeView === 'favorites') {
         __VLS_asFunctionalElement(__VLS_intrinsicElements.button, __VLS_intrinsicElements.button)({
             ...{ onClick: (...[$event]) => {
                     if (!!(__VLS_ctx.activeView === 'home'))
+                        return;
+                    if (!!(__VLS_ctx.activeView === 'dataManagement'))
                         return;
                     if (!!(__VLS_ctx.activeView === 'settings'))
                         return;
@@ -3298,6 +3601,8 @@ else if (__VLS_ctx.activeView === 'exports') {
         ...{ onClick: (...[$event]) => {
                 if (!!(__VLS_ctx.activeView === 'home'))
                     return;
+                if (!!(__VLS_ctx.activeView === 'dataManagement'))
+                    return;
                 if (!!(__VLS_ctx.activeView === 'settings'))
                     return;
                 if (!!(__VLS_ctx.activeView === 'logs'))
@@ -3344,6 +3649,8 @@ else if (__VLS_ctx.activeView === 'exports') {
         ...{ onClick: (...[$event]) => {
                 if (!!(__VLS_ctx.activeView === 'home'))
                     return;
+                if (!!(__VLS_ctx.activeView === 'dataManagement'))
+                    return;
                 if (!!(__VLS_ctx.activeView === 'settings'))
                     return;
                 if (!!(__VLS_ctx.activeView === 'logs'))
@@ -3381,6 +3688,8 @@ else if (__VLS_ctx.activeView === 'exports') {
     __VLS_asFunctionalElement(__VLS_intrinsicElements.button, __VLS_intrinsicElements.button)({
         ...{ onClick: (...[$event]) => {
                 if (!!(__VLS_ctx.activeView === 'home'))
+                    return;
+                if (!!(__VLS_ctx.activeView === 'dataManagement'))
                     return;
                 if (!!(__VLS_ctx.activeView === 'settings'))
                     return;
@@ -3420,6 +3729,8 @@ else if (__VLS_ctx.activeView === 'exports') {
         ...{ onClick: (...[$event]) => {
                 if (!!(__VLS_ctx.activeView === 'home'))
                     return;
+                if (!!(__VLS_ctx.activeView === 'dataManagement'))
+                    return;
                 if (!!(__VLS_ctx.activeView === 'settings'))
                     return;
                 if (!!(__VLS_ctx.activeView === 'logs'))
@@ -3457,6 +3768,8 @@ else if (__VLS_ctx.activeView === 'exports') {
     __VLS_asFunctionalElement(__VLS_intrinsicElements.button, __VLS_intrinsicElements.button)({
         ...{ onClick: (...[$event]) => {
                 if (!!(__VLS_ctx.activeView === 'home'))
+                    return;
+                if (!!(__VLS_ctx.activeView === 'dataManagement'))
                     return;
                 if (!!(__VLS_ctx.activeView === 'settings'))
                     return;
@@ -3545,6 +3858,8 @@ else if (__VLS_ctx.activeView === 'imageHistory') {
             ...{ onClick: (...[$event]) => {
                     if (!!(__VLS_ctx.activeView === 'home'))
                         return;
+                    if (!!(__VLS_ctx.activeView === 'dataManagement'))
+                        return;
                     if (!!(__VLS_ctx.activeView === 'settings'))
                         return;
                     if (!!(__VLS_ctx.activeView === 'logs'))
@@ -3582,6 +3897,8 @@ else if (__VLS_ctx.activeView === 'imageHistory') {
             ...{ onClick: (...[$event]) => {
                     if (!!(__VLS_ctx.activeView === 'home'))
                         return;
+                    if (!!(__VLS_ctx.activeView === 'dataManagement'))
+                        return;
                     if (!!(__VLS_ctx.activeView === 'settings'))
                         return;
                     if (!!(__VLS_ctx.activeView === 'logs'))
@@ -3618,6 +3935,8 @@ else if (__VLS_ctx.activeView === 'imageHistory') {
         __VLS_asFunctionalElement(__VLS_intrinsicElements.button, __VLS_intrinsicElements.button)({
             ...{ onClick: (...[$event]) => {
                     if (!!(__VLS_ctx.activeView === 'home'))
+                        return;
+                    if (!!(__VLS_ctx.activeView === 'dataManagement'))
                         return;
                     if (!!(__VLS_ctx.activeView === 'settings'))
                         return;
@@ -3711,6 +4030,8 @@ else if (__VLS_ctx.activeView === 'ttsHistory') {
             ...{ onClick: (...[$event]) => {
                     if (!!(__VLS_ctx.activeView === 'home'))
                         return;
+                    if (!!(__VLS_ctx.activeView === 'dataManagement'))
+                        return;
                     if (!!(__VLS_ctx.activeView === 'settings'))
                         return;
                     if (!!(__VLS_ctx.activeView === 'logs'))
@@ -3750,6 +4071,8 @@ else if (__VLS_ctx.activeView === 'ttsHistory') {
             ...{ onClick: (...[$event]) => {
                     if (!!(__VLS_ctx.activeView === 'home'))
                         return;
+                    if (!!(__VLS_ctx.activeView === 'dataManagement'))
+                        return;
                     if (!!(__VLS_ctx.activeView === 'settings'))
                         return;
                     if (!!(__VLS_ctx.activeView === 'logs'))
@@ -3788,6 +4111,8 @@ else if (__VLS_ctx.activeView === 'ttsHistory') {
         __VLS_asFunctionalElement(__VLS_intrinsicElements.button, __VLS_intrinsicElements.button)({
             ...{ onClick: (...[$event]) => {
                     if (!!(__VLS_ctx.activeView === 'home'))
+                        return;
+                    if (!!(__VLS_ctx.activeView === 'dataManagement'))
                         return;
                     if (!!(__VLS_ctx.activeView === 'settings'))
                         return;
@@ -3845,15 +4170,15 @@ else {
     __VLS_asFunctionalElement(__VLS_intrinsicElements.div, __VLS_intrinsicElements.div)({
         ...{ class: "toolbar-title" },
     });
-    const __VLS_48 = {}.Terminal;
+    const __VLS_52 = {}.Terminal;
     /** @type {[typeof __VLS_components.Terminal, ]} */ ;
     // @ts-ignore
-    const __VLS_49 = __VLS_asFunctionalComponent(__VLS_48, new __VLS_48({
+    const __VLS_53 = __VLS_asFunctionalComponent(__VLS_52, new __VLS_52({
         size: (15),
     }));
-    const __VLS_50 = __VLS_49({
+    const __VLS_54 = __VLS_53({
         size: (15),
-    }, ...__VLS_functionalComponentArgsRest(__VLS_49));
+    }, ...__VLS_functionalComponentArgsRest(__VLS_53));
     __VLS_asFunctionalElement(__VLS_intrinsicElements.strong, __VLS_intrinsicElements.strong)({});
     (__VLS_ctx.activeMeta.label);
     __VLS_asFunctionalElement(__VLS_intrinsicElements.em, __VLS_intrinsicElements.em)({});
@@ -3864,6 +4189,8 @@ else {
     __VLS_asFunctionalElement(__VLS_intrinsicElements.select, __VLS_intrinsicElements.select)({
         ...{ onChange: (...[$event]) => {
                 if (!!(__VLS_ctx.activeView === 'home'))
+                    return;
+                if (!!(__VLS_ctx.activeView === 'dataManagement'))
                     return;
                 if (!!(__VLS_ctx.activeView === 'settings'))
                     return;
@@ -3911,6 +4238,8 @@ else {
         ...{ onClick: (...[$event]) => {
                 if (!!(__VLS_ctx.activeView === 'home'))
                     return;
+                if (!!(__VLS_ctx.activeView === 'dataManagement'))
+                    return;
                 if (!!(__VLS_ctx.activeView === 'settings'))
                     return;
                 if (!!(__VLS_ctx.activeView === 'logs'))
@@ -3951,15 +4280,15 @@ else {
         ...{ class: "icon-btn" },
         title: (__VLS_ctx.$t('chat.refreshHistory')),
     });
-    const __VLS_52 = {}.RefreshCw;
+    const __VLS_56 = {}.RefreshCw;
     /** @type {[typeof __VLS_components.RefreshCw, ]} */ ;
     // @ts-ignore
-    const __VLS_53 = __VLS_asFunctionalComponent(__VLS_52, new __VLS_52({
+    const __VLS_57 = __VLS_asFunctionalComponent(__VLS_56, new __VLS_56({
         size: (15),
     }));
-    const __VLS_54 = __VLS_53({
+    const __VLS_58 = __VLS_57({
         size: (15),
-    }, ...__VLS_functionalComponentArgsRest(__VLS_53));
+    }, ...__VLS_functionalComponentArgsRest(__VLS_57));
     __VLS_asFunctionalElement(__VLS_intrinsicElements.div, __VLS_intrinsicElements.div)({
         ...{ class: "chat-viewport" },
         ref: "chatContainer",
@@ -3990,6 +4319,8 @@ else {
         __VLS_asFunctionalElement(__VLS_intrinsicElements.button, __VLS_intrinsicElements.button)({
             ...{ onClick: (...[$event]) => {
                     if (!!(__VLS_ctx.activeView === 'home'))
+                        return;
+                    if (!!(__VLS_ctx.activeView === 'dataManagement'))
                         return;
                     if (!!(__VLS_ctx.activeView === 'settings'))
                         return;
@@ -4026,18 +4357,20 @@ else {
             ...{ class: "message-favorite" },
             title: (__VLS_ctx.$t('chat.favoriteMsg')),
         });
-        const __VLS_56 = {}.Star;
+        const __VLS_60 = {}.Star;
         /** @type {[typeof __VLS_components.Star, ]} */ ;
         // @ts-ignore
-        const __VLS_57 = __VLS_asFunctionalComponent(__VLS_56, new __VLS_56({
+        const __VLS_61 = __VLS_asFunctionalComponent(__VLS_60, new __VLS_60({
             size: (13),
         }));
-        const __VLS_58 = __VLS_57({
+        const __VLS_62 = __VLS_61({
             size: (13),
-        }, ...__VLS_functionalComponentArgsRest(__VLS_57));
+        }, ...__VLS_functionalComponentArgsRest(__VLS_61));
         __VLS_asFunctionalElement(__VLS_intrinsicElements.button, __VLS_intrinsicElements.button)({
             ...{ onClick: (...[$event]) => {
                     if (!!(__VLS_ctx.activeView === 'home'))
+                        return;
+                    if (!!(__VLS_ctx.activeView === 'dataManagement'))
                         return;
                     if (!!(__VLS_ctx.activeView === 'settings'))
                         return;
@@ -4074,14 +4407,14 @@ else {
             ...{ class: "message-copy" },
             title: "复制内容",
         });
-        const __VLS_60 = ((__VLS_ctx.copiedIndex === i ? __VLS_ctx.Check : __VLS_ctx.Copy));
+        const __VLS_64 = ((__VLS_ctx.copiedIndex === i ? __VLS_ctx.Check : __VLS_ctx.Copy));
         // @ts-ignore
-        const __VLS_61 = __VLS_asFunctionalComponent(__VLS_60, new __VLS_60({
+        const __VLS_65 = __VLS_asFunctionalComponent(__VLS_64, new __VLS_64({
             size: (13),
         }));
-        const __VLS_62 = __VLS_61({
+        const __VLS_66 = __VLS_65({
             size: (13),
-        }, ...__VLS_functionalComponentArgsRest(__VLS_61));
+        }, ...__VLS_functionalComponentArgsRest(__VLS_65));
         __VLS_asFunctionalElement(__VLS_intrinsicElements.div, __VLS_intrinsicElements.div)({
             ...{ class: "message-text-wrapper" },
         });
@@ -4094,6 +4427,8 @@ else {
                 __VLS_asFunctionalElement(__VLS_intrinsicElements.div, __VLS_intrinsicElements.div)({
                     ...{ onClick: (...[$event]) => {
                             if (!!(__VLS_ctx.activeView === 'home'))
+                                return;
+                            if (!!(__VLS_ctx.activeView === 'dataManagement'))
                                 return;
                             if (!!(__VLS_ctx.activeView === 'settings'))
                                 return;
@@ -4131,31 +4466,31 @@ else {
                         } },
                     ...{ class: "think-header" },
                 });
-                const __VLS_64 = {}.Cpu;
+                const __VLS_68 = {}.Cpu;
                 /** @type {[typeof __VLS_components.Cpu, ]} */ ;
                 // @ts-ignore
-                const __VLS_65 = __VLS_asFunctionalComponent(__VLS_64, new __VLS_64({
+                const __VLS_69 = __VLS_asFunctionalComponent(__VLS_68, new __VLS_68({
                     size: (14),
                     ...{ class: "think-icon" },
                 }));
-                const __VLS_66 = __VLS_65({
+                const __VLS_70 = __VLS_69({
                     size: (14),
                     ...{ class: "think-icon" },
-                }, ...__VLS_functionalComponentArgsRest(__VLS_65));
+                }, ...__VLS_functionalComponentArgsRest(__VLS_69));
                 __VLS_asFunctionalElement(__VLS_intrinsicElements.span, __VLS_intrinsicElements.span)({
                     ...{ class: "think-title" },
                 });
                 (__VLS_ctx.$t("chat.thinkTitle"));
-                const __VLS_68 = ((__VLS_ctx.expandedThinks[__VLS_ctx.activeProvider + '-' + __VLS_ctx.activeSessionIds[__VLS_ctx.activeProvider] + '-' + i] ? __VLS_ctx.ChevronUp : __VLS_ctx.ChevronDown));
+                const __VLS_72 = ((__VLS_ctx.expandedThinks[__VLS_ctx.activeProvider + '-' + __VLS_ctx.activeSessionIds[__VLS_ctx.activeProvider] + '-' + i] ? __VLS_ctx.ChevronUp : __VLS_ctx.ChevronDown));
                 // @ts-ignore
-                const __VLS_69 = __VLS_asFunctionalComponent(__VLS_68, new __VLS_68({
+                const __VLS_73 = __VLS_asFunctionalComponent(__VLS_72, new __VLS_72({
                     size: (14),
                     ...{ class: "think-chevron" },
                 }));
-                const __VLS_70 = __VLS_69({
+                const __VLS_74 = __VLS_73({
                     size: (14),
                     ...{ class: "think-chevron" },
-                }, ...__VLS_functionalComponentArgsRest(__VLS_69));
+                }, ...__VLS_functionalComponentArgsRest(__VLS_73));
                 if (__VLS_ctx.expandedThinks[__VLS_ctx.activeProvider + '-' + __VLS_ctx.activeSessionIds[__VLS_ctx.activeProvider] + '-' + i]) {
                     __VLS_asFunctionalElement(__VLS_intrinsicElements.div, __VLS_intrinsicElements.div)({
                         ...{ class: "think-body" },
@@ -4218,15 +4553,15 @@ else {
             ...{ class: "stop-btn" },
             title: (__VLS_ctx.$t('chat.stopGeneration')),
         });
-        const __VLS_72 = {}.Square;
+        const __VLS_76 = {}.Square;
         /** @type {[typeof __VLS_components.Square, ]} */ ;
         // @ts-ignore
-        const __VLS_73 = __VLS_asFunctionalComponent(__VLS_72, new __VLS_72({
+        const __VLS_77 = __VLS_asFunctionalComponent(__VLS_76, new __VLS_76({
             size: (16),
         }));
-        const __VLS_74 = __VLS_73({
+        const __VLS_78 = __VLS_77({
             size: (16),
-        }, ...__VLS_functionalComponentArgsRest(__VLS_73));
+        }, ...__VLS_functionalComponentArgsRest(__VLS_77));
     }
     else {
         __VLS_asFunctionalElement(__VLS_intrinsicElements.button, __VLS_intrinsicElements.button)({
@@ -4234,15 +4569,15 @@ else {
             ...{ class: "send-btn" },
             disabled: (!__VLS_ctx.inputText.trim()),
         });
-        const __VLS_76 = {}.Send;
+        const __VLS_80 = {}.Send;
         /** @type {[typeof __VLS_components.Send, ]} */ ;
         // @ts-ignore
-        const __VLS_77 = __VLS_asFunctionalComponent(__VLS_76, new __VLS_76({
+        const __VLS_81 = __VLS_asFunctionalComponent(__VLS_80, new __VLS_80({
             size: (18),
         }));
-        const __VLS_78 = __VLS_77({
+        const __VLS_82 = __VLS_81({
             size: (18),
-        }, ...__VLS_functionalComponentArgsRest(__VLS_77));
+        }, ...__VLS_functionalComponentArgsRest(__VLS_81));
     }
 }
 var __VLS_8;
@@ -4266,15 +4601,15 @@ if (__VLS_ctx.selectedAsset) {
         ...{ onClick: (__VLS_ctx.closeAssetDetail) },
         ...{ class: "icon-btn" },
     });
-    const __VLS_80 = {}.X;
+    const __VLS_84 = {}.X;
     /** @type {[typeof __VLS_components.X, ]} */ ;
     // @ts-ignore
-    const __VLS_81 = __VLS_asFunctionalComponent(__VLS_80, new __VLS_80({
+    const __VLS_85 = __VLS_asFunctionalComponent(__VLS_84, new __VLS_84({
         size: (15),
     }));
-    const __VLS_82 = __VLS_81({
+    const __VLS_86 = __VLS_85({
         size: (15),
-    }, ...__VLS_functionalComponentArgsRest(__VLS_81));
+    }, ...__VLS_functionalComponentArgsRest(__VLS_85));
     __VLS_asFunctionalElement(__VLS_intrinsicElements.div, __VLS_intrinsicElements.div)({
         ...{ class: "asset-modal-body" },
     });
@@ -4330,6 +4665,24 @@ if (__VLS_ctx.selectedAsset) {
 /** @type {__VLS_StyleScopedClasses['home-tile']} */ ;
 /** @type {__VLS_StyleScopedClasses['home-notices']} */ ;
 /** @type {__VLS_StyleScopedClasses['home-notice']} */ ;
+/** @type {__VLS_StyleScopedClasses['settings-view']} */ ;
+/** @type {__VLS_StyleScopedClasses['settings-header']} */ ;
+/** @type {__VLS_StyleScopedClasses['log-action']} */ ;
+/** @type {__VLS_StyleScopedClasses['log-action']} */ ;
+/** @type {__VLS_StyleScopedClasses['home-notice']} */ ;
+/** @type {__VLS_StyleScopedClasses['icon-btn']} */ ;
+/** @type {__VLS_StyleScopedClasses['settings-grid']} */ ;
+/** @type {__VLS_StyleScopedClasses['settings-card']} */ ;
+/** @type {__VLS_StyleScopedClasses['minimax-card']} */ ;
+/** @type {__VLS_StyleScopedClasses['wide-status']} */ ;
+/** @type {__VLS_StyleScopedClasses['settings-card-head']} */ ;
+/** @type {__VLS_StyleScopedClasses['provider-toggle']} */ ;
+/** @type {__VLS_StyleScopedClasses['toggle-pill']} */ ;
+/** @type {__VLS_StyleScopedClasses['toggle-pill']} */ ;
+/** @type {__VLS_StyleScopedClasses['settings-card']} */ ;
+/** @type {__VLS_StyleScopedClasses['settings-card-head']} */ ;
+/** @type {__VLS_StyleScopedClasses['settings-card']} */ ;
+/** @type {__VLS_StyleScopedClasses['settings-card-head']} */ ;
 /** @type {__VLS_StyleScopedClasses['settings-view']} */ ;
 /** @type {__VLS_StyleScopedClasses['settings-header']} */ ;
 /** @type {__VLS_StyleScopedClasses['icon-btn']} */ ;
@@ -4692,6 +5045,11 @@ const __VLS_self = (await import('vue')).defineComponent({
             accountLoading: accountLoading,
             settingsLoading: settingsLoading,
             settingsState: settingsState,
+            dataManagementStatus: dataManagementStatus,
+            dataManagementLoading: dataManagementLoading,
+            selectedDataMode: selectedDataMode,
+            connectionTestResult: connectionTestResult,
+            dataFileCards: dataFileCards,
             settingsDraft: settingsDraft,
             sidebarWidth: sidebarWidth,
             promptTemplates: promptTemplates,
@@ -4764,6 +5122,9 @@ const __VLS_self = (await import('vue')).defineComponent({
             openDiagnostics: openDiagnostics,
             openAssets: openAssets,
             openSettings: openSettings,
+            loadDataManagementStatus: loadDataManagementStatus,
+            switchDataSourceMode: switchDataSourceMode,
+            testDataConnection: testDataConnection,
             addPromptTemplate: addPromptTemplate,
             deletePromptTemplate: deletePromptTemplate,
             usePromptTemplate: usePromptTemplate,

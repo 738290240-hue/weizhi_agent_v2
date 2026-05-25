@@ -92,3 +92,19 @@ export const ttsApi = {
         source?: string;
     }) => api.post('/tts/preview', payload)
 };
+
+export type DataSourceMode = 'json' | 'postgresql';
+
+export type DataManagementStatus = {
+    mode: DataSourceMode;
+    ready: boolean;
+    json?: Record<string, any>;
+    postgresql?: Record<string, any>;
+};
+
+export const dataManagementApi = {
+    status: () => api.get<DataManagementStatus>('/data-management/status'),
+    switchMode: (mode: DataSourceMode) => api.post('/data-management/mode', { mode }),
+    testConnection: (mode: DataSourceMode) => api.post('/data-management/test-connection', { mode })
+};
+

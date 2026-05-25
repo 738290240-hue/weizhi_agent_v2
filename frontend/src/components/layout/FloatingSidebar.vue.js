@@ -1,6 +1,6 @@
 /// <reference types="../../../node_modules/.vue-global-types/vue_3.5_0_0_0.d.ts" />
 import { inject } from 'vue';
-import { Terminal, Home, Bell, BookOpen, Activity, FolderOpen, Star, Wrench, Download, FileText, Settings, History, Trash2, Cpu, Image as ImageIcon, Volume2 } from 'lucide-vue-next';
+import { Terminal, Home, Bell, BookOpen, Activity, FolderOpen, Star, Wrench, Download, FileText, Settings, History, Trash2, Cpu, Image as ImageIcon, Volume2, Database } from 'lucide-vue-next';
 // Inject all required state and methods from App.vue
 const appState = inject('appState');
 debugger; /* PartiallyEnd: #3632/scriptSetup.vue */
@@ -351,12 +351,12 @@ const __VLS_74 = __VLS_73({
 }, ...__VLS_functionalComponentArgsRest(__VLS_73));
 (__VLS_ctx.$t('nav.logs'));
 __VLS_asFunctionalElement(__VLS_intrinsicElements.button, __VLS_intrinsicElements.button)({
-    ...{ onClick: (__VLS_ctx.appState.openSettings) },
+    ...{ onClick: (__VLS_ctx.appState.openDataManagement) },
     ...{ class: "nav-item" },
-    ...{ class: ({ active: __VLS_ctx.appState.activeView.value === 'settings' }) },
+    ...{ class: ({ active: __VLS_ctx.appState.activeView.value === 'dataManagement' }) },
 });
-const __VLS_76 = {}.Settings;
-/** @type {[typeof __VLS_components.Settings, ]} */ ;
+const __VLS_76 = {}.Database;
+/** @type {[typeof __VLS_components.Database, ]} */ ;
 // @ts-ignore
 const __VLS_77 = __VLS_asFunctionalComponent(__VLS_76, new __VLS_76({
     size: (16),
@@ -364,6 +364,21 @@ const __VLS_77 = __VLS_asFunctionalComponent(__VLS_76, new __VLS_76({
 const __VLS_78 = __VLS_77({
     size: (16),
 }, ...__VLS_functionalComponentArgsRest(__VLS_77));
+(__VLS_ctx.$t('nav.dataManagement'));
+__VLS_asFunctionalElement(__VLS_intrinsicElements.button, __VLS_intrinsicElements.button)({
+    ...{ onClick: (__VLS_ctx.appState.openSettings) },
+    ...{ class: "nav-item" },
+    ...{ class: ({ active: __VLS_ctx.appState.activeView.value === 'settings' }) },
+});
+const __VLS_80 = {}.Settings;
+/** @type {[typeof __VLS_components.Settings, ]} */ ;
+// @ts-ignore
+const __VLS_81 = __VLS_asFunctionalComponent(__VLS_80, new __VLS_80({
+    size: (16),
+}));
+const __VLS_82 = __VLS_81({
+    size: (16),
+}, ...__VLS_functionalComponentArgsRest(__VLS_81));
 (__VLS_ctx.$t('nav.settings'));
 __VLS_asFunctionalElement(__VLS_intrinsicElements.div, __VLS_intrinsicElements.div)({
     ...{ class: "bottom-controls" },
@@ -456,15 +471,15 @@ __VLS_asFunctionalElement(__VLS_intrinsicElements.button, __VLS_intrinsicElement
     ...{ onClick: (__VLS_ctx.appState.clearCurrentConversation) },
     ...{ class: "btn-clear" },
 });
-const __VLS_80 = {}.Trash2;
+const __VLS_84 = {}.Trash2;
 /** @type {[typeof __VLS_components.Trash2, ]} */ ;
 // @ts-ignore
-const __VLS_81 = __VLS_asFunctionalComponent(__VLS_80, new __VLS_80({
+const __VLS_85 = __VLS_asFunctionalComponent(__VLS_84, new __VLS_84({
     size: (14),
 }));
-const __VLS_82 = __VLS_81({
+const __VLS_86 = __VLS_85({
     size: (14),
-}, ...__VLS_functionalComponentArgsRest(__VLS_81));
+}, ...__VLS_functionalComponentArgsRest(__VLS_85));
 (__VLS_ctx.$t('nav.clearSession'));
 /** @type {__VLS_StyleScopedClasses['floating-sidebar']} */ ;
 /** @type {__VLS_StyleScopedClasses['brand']} */ ;
@@ -489,6 +504,7 @@ const __VLS_82 = __VLS_81({
 /** @type {__VLS_StyleScopedClasses['nav-item']} */ ;
 /** @type {__VLS_StyleScopedClasses['nav-item']} */ ;
 /** @type {__VLS_StyleScopedClasses['nav-badge']} */ ;
+/** @type {__VLS_StyleScopedClasses['nav-item']} */ ;
 /** @type {__VLS_StyleScopedClasses['nav-item']} */ ;
 /** @type {__VLS_StyleScopedClasses['nav-item']} */ ;
 /** @type {__VLS_StyleScopedClasses['nav-item']} */ ;
@@ -539,6 +555,7 @@ const __VLS_self = (await import('vue')).defineComponent({
             Cpu: Cpu,
             ImageIcon: ImageIcon,
             Volume2: Volume2,
+            Database: Database,
             appState: appState,
         };
     },

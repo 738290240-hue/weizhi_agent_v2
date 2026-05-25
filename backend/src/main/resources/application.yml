@@ -34,3 +34,6 @@ storage:
   audio-dir: generated_audio
   image-history-file: data/image-history.json
   tts-history-file: data/tts-history.json
+
+data-management:
+  mode: ${WEIZHI_DATA_SOURCE_MODE:json}

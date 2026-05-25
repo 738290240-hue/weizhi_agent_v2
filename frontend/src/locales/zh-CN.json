@@ -22,7 +22,8 @@
     "clearSession": "清除当前会话",
     "translation": "翻译工作台",
     "openaiSession": "OpenAI 会话",
-    "openaiDesc": "绿色智能通道"
+    "openaiDesc": "绿色智能通道",
+    "dataManagement": "数据管理"
   },
   "theme": {
     "midnight": "午夜蓝",
@@ -333,5 +334,26 @@
     "historyTitle": "历史记录",
     "emptyHistory": "暂无翻译历史",
     "toggleHistory": "历史记录"
+  },
+  "dataManagement": {
+    "title": "数据管理",
+    "desc": "选择本地数据来源，查看 JSON 文件状态，并为 PostgreSQL 数据库模式做准备。",
+    "currentMode": "当前数据源",
+    "jsonMode": "JSON 文件",
+    "postgresqlMode": "PostgreSQL",
+    "jsonStatus": "JSON 文件状态",
+    "postgresqlStatus": "PostgreSQL 状态",
+    "settingsFile": "设置文件",
+    "imageHistory": "图片历史",
+    "ttsHistory": "语音历史",
+    "exists": "存在",
+    "missing": "不存在",
+    "records": "条记录",
+    "testConnection": "测试连接",
+    "switchSuccess": "数据源已切换",
+    "switchFailed": "数据源切换失败",
+    "connectionSuccess": "连接可用",
+    "connectionFailed": "连接不可用",
+    "postgresqlUnavailable": "PostgreSQL 模式将在数据库存储实现后启用。"
   }
 }
