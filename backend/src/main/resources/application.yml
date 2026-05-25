@@ -36,7 +36,7 @@ storage:
   tts-history-file: data/tts-history.json
 
 data-management:
-  mode: ${WEIZHI_DATA_SOURCE_MODE:json}
+  mode: ${WEIZHI_DATA_SOURCE_MODE:postgresql}
 
 weizhi:
   postgresql:
