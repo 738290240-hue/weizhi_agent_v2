@@ -5,6 +5,7 @@ import com.weizhi.agent.model.ChatResponse;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.weizhi.agent.service.AiSettingsService;
+import com.weizhi.agent.service.HistoryService;
 import com.weizhi.agent.service.MessageResolver;
 import com.weizhi.agent.tools.FileUtils;
 import okhttp3.MediaType;
@@ -40,6 +41,7 @@ public class ChatController {
     private final ObjectMapper objectMapper;
     private final OkHttpClient httpClient;
     private final AiSettingsService settingsService;
+    private final HistoryService historyService;
 
     @Value("${minimax.chat-endpoint}")
     private String chatEndpoint;
@@ -51,10 +53,11 @@ public class ChatController {
     @Value("${app.generated-images-path:generated_images}")
     private String generatedImagesPath;
 
-    public ChatController(OkHttpClient okHttpClient, ObjectMapper objectMapper, AiSettingsService settingsService) {
+    public ChatController(OkHttpClient okHttpClient, ObjectMapper objectMapper, AiSettingsService settingsService, HistoryService historyService) {
         this.httpClient = okHttpClient;
         this.objectMapper = objectMapper;
         this.settingsService = settingsService;
+        this.historyService = historyService;
     }
 
     @PostMapping("/ask")
@@ -361,11 +364,24 @@ public class ChatController {
                 && (s.contains("图片") || s.contains("图像") || s.contains("照片") || s.contains("image"));
     }
 
+    private String cleanPrompt(String prompt) {
+        if (prompt == null) return "";
+        String p = prompt.trim();
+        // Remove common command prefixes (case-insensitive)
+        p = p.replaceAll("^(?i)(帮我)?(生成|画|画一幅|画一张|画个|创建一个|创建一幅|设计|给我画|来一张|来一个|show me a|draw a|create an image of|generate a picture of)\\s*", "");
+        // Remove common suffixes (case-insensitive)
+        p = p.replaceAll("(?i)(的)?(图片|图|图像|照片|画作|插画|壁纸|portrait|painting|picture|image|photo)$", "");
+        return p.trim().isEmpty() ? prompt : p.trim();
+    }
+
     private String generateImageFromPrompt(String prompt) {
         try {
+            String cleanedPrompt = cleanPrompt(prompt);
+            log.info("Original image prompt: '{}' -> Cleaned description for model: '{}'", prompt, cleanedPrompt);
+
             Map<String, Object> bodyMap = Map.of(
                     "model", "image-01",
-                    "prompt", prompt,
+                    "prompt", cleanedPrompt,
                     "response_format", "base64",
                     "aspect_ratio", "1:1",
                     "n", 1
@@ -388,7 +404,14 @@ public class ChatController {
                 Path baseDir = Paths.get(generatedImagesPath).toAbsolutePath();
                 Files.createDirectories(baseDir);
                 Files.write(baseDir.resolve(filename), data);
-                return "/api/images/files/" + filename;
+
+                String url = "/api/images/files/" + filename;
+                try {
+                    historyService.appendImage(prompt, filename, url, "image-01");
+                } catch (Exception ex) {
+                    log.warn("Failed to record image history: {}", ex.getMessage());
+                }
+                return url;
             }
         } catch (Exception e) {
             log.warn("generateImageFromPrompt failed for prompt '{}': {}", prompt, e.getMessage(), e);
