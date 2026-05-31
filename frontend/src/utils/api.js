@@ -10,7 +10,16 @@ export const systemApi = {
     },
     logs: (params) => api.get('/system/logs/history', { params }),
     clearLogs: () => api.delete('/system/logs'),
-    getHealth: () => api.get('/system/health')
+    getHealth: () => api.get('/system/health'),
+    upload: (file) => {
+        const formData = new FormData();
+        formData.append('file', file);
+        return api.post('/upload', formData, {
+            headers: {
+                'Content-Type': 'multipart/form-data'
+            }
+        });
+    }
 };
 export const settingsApi = {
     get: () => api.get('/settings'),
@@ -35,6 +44,12 @@ export const openaiApi = {
     ask: (message, messages, options) => api.post('/openai/chat/ask', { message, messages }, options),
     streamUrl: () => resolveApiUrl('/api/openai/chat/stream')
 };
+export const geminiApi = {
+    ask: (message, messages, mode = 'auto', documentIds, model, options) => api.post('/gemini/chat/ask', { message, messages, mode, documentIds, model }, options),
+    streamUrl: () => resolveApiUrl('/api/gemini/chat/stream'),
+    capabilities: () => api.get('/gemini/models/capabilities'),
+    probe: () => api.post('/gemini/models/probe')
+};
 export const imageApi = {
     history: () => api.get(`/images/history?t=${Date.now()}`),
     deleteHistory: (id) => api.delete(`/images/history/${id}`),
@@ -52,4 +67,20 @@ export const dataManagementApi = {
     status: () => api.get('/data-management/status'),
     switchMode: (mode) => api.post('/data-management/mode', { mode }),
     testConnection: (mode) => api.post('/data-management/test-connection', { mode })
+};
+export const documentApi = {
+    list: () => api.get('/documents'),
+    delete: (id) => api.delete(`/documents/${id}`),
+    upload: (file, name) => {
+        const formData = new FormData();
+        formData.append('file', file);
+        if (name) {
+            formData.append('name', name);
+        }
+        return api.post('/documents/upload', formData, {
+            headers: {
+                'Content-Type': 'multipart/form-data'
+            }
+        });
+    }
 };

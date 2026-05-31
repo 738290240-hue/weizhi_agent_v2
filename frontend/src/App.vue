@@ -2,24 +2,27 @@
 // i18n refactor completed
 import { computed, ref, onMounted, onBeforeUnmount, nextTick, provide, watch } from "vue";
 import { useI18n } from "vue-i18n";
+import { marked } from "marked";
+import hljs from "highlight.js";
 import AppBackground from './components/layout/AppBackground.vue';
 import FloatingSidebar from './components/layout/FloatingSidebar.vue';
 import FloatingMainPanel from './components/layout/FloatingMainPanel.vue';
 import TranslationView from './components/chat/TranslationView.vue';
-import { systemApi, settingsApi, chatApi, deepSeekApi, openaiApi, imageApi, ttsApi, dataManagementApi, type LogEntry, type ProviderMessage, type DataManagementStatus, type DataSourceMode } from "./utils/api";
+import { systemApi, settingsApi, chatApi, deepSeekApi, openaiApi, geminiApi, imageApi, ttsApi, dataManagementApi, documentApi, type LogEntry, type ProviderMessage, type DataManagementStatus, type DataSourceMode, type DocumentRecord } from "./utils/api";
 import { resolveApiUrl } from "./utils/urlUtils";
 import { Terminal, Send, Trash2, Cpu, Settings, Image as ImageIcon, Volume2, FileText, RefreshCw, History, BookOpen, Activity, FolderOpen, Star, Wrench, Download, Home, Bell, X, ChevronDown, ChevronUp, Palette, Square, Copy, Check } from "lucide-vue-next";
 
-type MediaItem = { type: "image" | "audio"; url: string };
+type MediaItem = { type: "image" | "audio" | "document"; url: string };
 type ChatMessage = { role: "user" | "assistant"; content: string; media?: MediaItem[] };
-type ChatProvider = "minimax" | "deepseek" | "openai";
+type ChatProvider = "minimax" | "deepseek" | "openai" | "gemini";
+type GeminiMode = "auto" | "text" | "code" | "image";
 type MainView = "home" | "chat" | "speech" | "translation" | "imageHistory" | "ttsHistory" | "sessions" | "tasks" | "notifications" | "prompts" | "assets" | "favorites" | "diagnostics" | "exports" | "apiStatus" | "logs" | "settings" | "dataManagement";
-type PromptTemplate = { id: string; title: string; content: string; provider: "通用" | "MiniMax" | "DeepSeek" | "OpenAI" };
-type FavoriteItem = { id: string; type: "text" | "image" | "audio"; title: string; subtitle: string; content?: string; url?: string };
+type PromptTemplate = { id: string; title: string; content: string; provider: "通用" | "MiniMax" | "DeepSeek" | "OpenAI" | "Gemini" };
+type FavoriteItem = { id: string; type: "text" | "image" | "audio" | "document"; title: string; subtitle: string; content?: string; url?: string };
 type SessionRecord = { id: string; provider: ChatProvider; title: string; createdAt: string; updatedAt: string; messages: ChatMessage[] };
 type TaskRecord = { id: string; title: string; provider: ChatProvider | "system"; status: "pending" | "running" | "success" | "failed"; createdAt: string; detail: string };
 type NotificationItem = { id: string; level: "success" | "warning" | "error" | "info"; title: string; message: string; createdAt: string; read: boolean };
-type AssetItem = { id: string; type: "image" | "audio"; title: string; subtitle: string; url: string };
+type AssetItem = { id: string; type: "image" | "audio" | "document"; title: string; subtitle: string; url: string };
 
 const logs = ref<string[]>([]);
 const logEntries = ref<LogEntry[]>([]);
@@ -47,11 +50,214 @@ const activeView = ref<MainView>("home");
 const minimaxMessages = ref<ChatMessage[]>([]);
 const deepSeekMessages = ref<ChatMessage[]>([]);
 const openaiMessages = ref<ChatMessage[]>([]);
+const geminiMessages = ref<ChatMessage[]>([]);
 const chatSessions = ref<SessionRecord[]>([]);
-const activeSessionIds = ref<Record<ChatProvider, string>>({ minimax: "", deepseek: "", openai: "" });
+const activeSessionIds = ref<Record<ChatProvider, string>>({ minimax: "", deepseek: "", openai: "", gemini: "" });
 const taskQueue = ref<TaskRecord[]>([]);
 const notifications = ref<NotificationItem[]>([]);
 const inputText = ref("");
+const geminiMode = ref<GeminiMode>("auto");
+const selectedGeminiModel = ref<string>("auto");
+const showModelDropdown = ref(false);
+const selectModel = (modelId: string) => {
+  selectedGeminiModel.value = modelId;
+  showModelDropdown.value = false;
+};
+const closeModelDropdown = () => {
+  showModelDropdown.value = false;
+};
+
+const formatModelInfo = (id: string) => {
+  const lowercaseId = id.toLowerCase();
+  let displayName = id;
+  let badgeText = "Pro";
+  let badgeClass = "badge-pro";
+  let description = "通用大语言模型";
+
+  // ── Claude ──────────────────────────────────────────────────────
+  if (lowercaseId.includes("claude-opus-4") || lowercaseId.includes("claude-4-opus")) {
+    displayName = "Claude Opus 4";
+    badgeText = "Opus";
+    badgeClass = "badge-thinking";
+    description = "顶级推理 / 复杂任务旗舰";
+  } else if (lowercaseId.includes("claude-opus")) {
+    displayName = "Claude Opus";
+    badgeText = "Opus";
+    badgeClass = "badge-thinking";
+    description = "高阶逻辑 / 复杂推理";
+  } else if (lowercaseId.includes("claude-sonnet-4") || lowercaseId.includes("claude-4-sonnet")
+      || lowercaseId.includes("claude-3-5-sonnet-20241022")) {
+    displayName = "Claude Sonnet 4";
+    badgeText = "Sonnet";
+    badgeClass = "badge-thinking";
+    description = "高阶逻辑 / 复杂编程";
+  } else if (lowercaseId.includes("claude-3-5-sonnet-20240620") || lowercaseId.includes("claude-sonnet-3")) {
+    displayName = "Claude Sonnet 3.5";
+    badgeText = "Sonnet";
+    badgeClass = "badge-thinking";
+    description = "复杂逻辑与推理";
+  } else if (lowercaseId.includes("claude-sonnet")) {
+    displayName = "Claude Sonnet";
+    badgeText = "Sonnet";
+    badgeClass = "badge-thinking";
+    description = "高阶逻辑 / 复杂推理";
+  } else if (lowercaseId.includes("claude-haiku-4") || lowercaseId.includes("claude-4-haiku")) {
+    displayName = "Claude Haiku 4";
+    badgeText = "Fast";
+    badgeClass = "badge-fast";
+    description = "极速日常问答 (新版)";
+  } else if (lowercaseId.includes("claude-3-5-haiku") || lowercaseId.includes("claude-haiku-3")) {
+    displayName = "Claude Haiku 3.5";
+    badgeText = "Fast";
+    badgeClass = "badge-fast";
+    description = "极速日常问答";
+  } else if (lowercaseId.includes("claude-haiku")) {
+    displayName = "Claude Haiku";
+    badgeText = "Fast";
+    badgeClass = "badge-fast";
+    description = "极速日常问答";
+  } else if (lowercaseId.includes("claude-3-7")) {
+    displayName = "Claude 3.7";
+    badgeText = "Pro";
+    badgeClass = "badge-pro";
+    description = "高阶综合推理";
+  } else if (lowercaseId.includes("claude-3-opus")) {
+    displayName = "Claude 3 Opus";
+    badgeText = "Opus";
+    badgeClass = "badge-opus";
+    description = "高阶推理 / 复杂分析";
+  } else if (lowercaseId.includes("claude-3-haiku")) {
+    displayName = "Claude 3 Haiku";
+    badgeText = "Fast";
+    badgeClass = "badge-fast";
+    description = "经典极速问答";
+  } else if (lowercaseId.includes("claude-3-sonnet")) {
+    displayName = "Claude 3 Sonnet";
+    badgeText = "Sonnet";
+    badgeClass = "badge-thinking";
+    description = "经典综合推理";
+
+  // ── DeepSeek ──────────────────────────────────────────────────────
+  } else if (lowercaseId.includes("deepseek-reasoner") || lowercaseId.includes("deepseek-r1")) {
+    displayName = "DeepSeek R1";
+    badgeText = "Thinking";
+    badgeClass = "badge-thinking";
+    description = "深度思考与长链推理";
+  } else if (lowercaseId.includes("deepseek-chat") || lowercaseId.includes("deepseek-v3")) {
+    displayName = "DeepSeek V3 / Chat";
+    badgeText = "Pro";
+    badgeClass = "badge-pro";
+    description = "极高性价比综合分析";
+
+  // ── GPT / OpenAI ──────────────────────────────────────────────────
+  } else if (lowercaseId.includes("o1-mini") || lowercaseId === "o1-mini") {
+    displayName = "GPT o1 Mini";
+    badgeText = "Think";
+    badgeClass = "badge-thinking";
+    description = "轻量推理模型";
+  } else if (lowercaseId.startsWith("o1") || lowercaseId === "o1") {
+    displayName = "GPT o1";
+    badgeText = "Think";
+    badgeClass = "badge-thinking";
+    description = "深度推理旗舰";
+  } else if (lowercaseId.startsWith("o3-mini") || lowercaseId === "o3-mini") {
+    displayName = "GPT o3 Mini";
+    badgeText = "Think";
+    badgeClass = "badge-thinking";
+    description = "高效推理模型";
+  } else if (lowercaseId.startsWith("o3") || lowercaseId === "o3") {
+    displayName = "GPT o3";
+    badgeText = "Think";
+    badgeClass = "badge-thinking";
+    description = "高阶推理旗舰";
+  } else if (lowercaseId.startsWith("o4-mini")) {
+    displayName = "GPT o4 Mini";
+    badgeText = "Think";
+    badgeClass = "badge-thinking";
+    description = "新一代轻量推理";
+  } else if (lowercaseId.startsWith("o4")) {
+    displayName = "GPT o4";
+    badgeText = "Think";
+    badgeClass = "badge-thinking";
+    description = "新一代旗舰推理";
+  } else if (lowercaseId.includes("gpt-4o-mini")) {
+    displayName = "GPT-4o Mini";
+    badgeText = "Fast";
+    badgeClass = "badge-fast";
+    description = "高性价比极速文本响应";
+  } else if (lowercaseId.includes("gpt-4o")) {
+    displayName = "GPT-4o";
+    badgeText = "Pro";
+    badgeClass = "badge-pro";
+    description = "强力多模态 / 综合问答";
+  } else if (lowercaseId.includes("gpt-4.1-mini")) {
+    displayName = "GPT-4.1 Mini";
+    badgeText = "Fast";
+    badgeClass = "badge-fast";
+    description = "高性价比新版";
+  } else if (lowercaseId.includes("gpt-4.1")) {
+    displayName = "GPT-4.1";
+    badgeText = "Pro";
+    badgeClass = "badge-pro";
+    description = "新版综合旗舰";
+  } else if (lowercaseId.includes("gpt-4-turbo")) {
+    displayName = "GPT-4 Turbo";
+    badgeText = "Pro";
+    badgeClass = "badge-pro";
+    description = "强力综合推理";
+  } else if (lowercaseId.includes("gpt-4")) {
+    displayName = "GPT-4";
+    badgeText = "Pro";
+    badgeClass = "badge-pro";
+    description = "经典强力模型";
+  } else if (lowercaseId.includes("gpt-3.5")) {
+    displayName = "GPT-3.5";
+    badgeText = "Fast";
+    badgeClass = "badge-fast";
+    description = "高性价比快速响应";
+
+  // ── Gemini ──────────────────────────────────────────────────────
+  } else if (lowercaseId.includes("gemini-3.1-pro-high") || lowercaseId.includes("gemini-3-pro") || lowercaseId.includes("gemini-1.5-pro")) {
+    displayName = "Gemini Pro";
+    badgeText = "Pro";
+    badgeClass = "badge-pro";
+    description = "大容量多模态分析";
+  } else if (lowercaseId.includes("gemini-2.5-pro") || lowercaseId.includes("gemini-2.5")) {
+    displayName = "Gemini 2.5 Pro";
+    badgeText = "Pro";
+    badgeClass = "badge-pro";
+    description = "新一代多模态旗舰";
+  } else if (lowercaseId.includes("gemini-2.0")) {
+    displayName = "Gemini 2.0";
+    badgeText = "Pro";
+    badgeClass = "badge-pro";
+    description = "多模态推理";
+  } else if (lowercaseId.includes("gemini-3-flash") || lowercaseId.includes("gemini-1.5-flash")) {
+    displayName = "Gemini Flash";
+    badgeText = "Fast";
+    badgeClass = "badge-fast";
+    description = "日常多模态极速问答";
+  } else if (lowercaseId.includes("gemini-2.5-flash")) {
+    displayName = "Gemini 2.5 Flash";
+    badgeText = "Fast";
+    badgeClass = "badge-fast";
+    description = "新一代极速多模态";
+  } else {
+    // Generic fallback: format ID as readable name
+    // e.g. "gpt-oss-120b-medium" → "Gpt Oss 120b"
+    displayName = id
+      .replace(/[-_]/g, ' ')
+      .split(' ')
+      .slice(0, 3)  // take first 3 words max
+      .map((w: string) => w.charAt(0).toUpperCase() + w.slice(1))
+      .join(' ');
+    badgeText = "AI";
+    badgeClass = "badge-pro";
+    description = "中转自定义模型";
+  }
+
+  return { displayName, badgeText, badgeClass, description };
+};
 const isThinking = ref(false);
 const chatAbortController = ref<AbortController | null>(null);
 const copiedIndex = ref<number | null>(null);
@@ -60,6 +266,70 @@ const chatContainer = ref<HTMLElement | null>(null);
 const expandedThinks = ref<Record<string, boolean>>({});
 const toggleThink = (key: string) => {
   expandedThinks.value[key] = !expandedThinks.value[key];
+};
+
+// Custom renderer to add copy buttons and language headers to code blocks!
+const markedRenderer = new marked.Renderer();
+
+markedRenderer.code = (arg1: any, arg2?: any) => {
+  let text = "";
+  let lang = "";
+  if (typeof arg1 === "object" && arg1 !== null) {
+    text = arg1.text || "";
+    lang = arg1.lang || "";
+  } else {
+    text = String(arg1 || "");
+    lang = String(arg2 || "");
+  }
+  const language = lang || "plaintext";
+  const validLanguage = hljs.getLanguage(language) ? language : "plaintext";
+  const highlighted = hljs.highlight(text, { language: validLanguage }).value;
+  
+  return `
+    <div class="code-block-wrapper">
+      <div class="code-block-header">
+        <span class="code-lang">${validLanguage}</span>
+        <button class="code-copy-btn" onclick="window.weizhiCopyCode(this)">
+          <svg class="copy-icon" viewBox="0 0 24 24" width="14" height="14" stroke="currentColor" stroke-width="2.5" fill="none" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>
+          <span class="copy-text">复制</span>
+        </button>
+      </div>
+      <pre class="hljs"><code class="language-${validLanguage}">${highlighted}</code></pre>
+    </div>
+  `;
+};
+
+// Set options
+marked.setOptions({
+  renderer: markedRenderer,
+  gfm: true,
+  breaks: true
+});
+
+// Register code copy handler globally
+(window as any).weizhiCopyCode = (btn: HTMLButtonElement) => {
+  const pre = btn.parentElement?.nextElementSibling;
+  if (!pre) return;
+  const code = pre.querySelector("code")?.innerText || "";
+  navigator.clipboard.writeText(code).then(() => {
+    const textSpan = btn.querySelector(".copy-text");
+    if (textSpan) textSpan.textContent = "已复制";
+    btn.classList.add("copied");
+    setTimeout(() => {
+      if (textSpan) textSpan.textContent = "复制";
+      btn.classList.remove("copied");
+    }, 2000);
+  });
+};
+
+const renderMarkdown = (text: string): string => {
+  if (!text) return "";
+  try {
+    return marked.parse(text) as string;
+  } catch (err) {
+    console.error("Failed to parse markdown:", err);
+    return text;
+  }
 };
 
 interface MessageBlock {
@@ -108,6 +378,8 @@ const parseMessageContent = (content: string): MessageBlock[] => {
 
 const imageHistories = ref<Array<Record<string, any>>>([]);
 const ttsHistories = ref<Array<Record<string, any>>>([]);
+const documents = ref<DocumentRecord[]>([]);
+const selectedDocIds = ref<string[]>([]);
 const voices = ref<Array<{ voiceId: string; name: string; category?: string; description?: string }>>([]);
 const activeVoiceTab = ref("中文男声");
 
@@ -181,6 +453,11 @@ const deepSeekUsage = ref<Record<string, any> | null>(null);
 const accountLoading = ref(false);
 const settingsLoading = ref(false);
 const settingsState = ref<Record<string, any>>({});
+const geminiCapabilities = ref<any>(null);
+const geminiProbeLoading = ref(false);
+const uploadedFiles = ref<Array<{ url: string; type: 'image' | 'audio' | 'document'; name: string }>>([]);
+const fileInput = ref<HTMLInputElement | null>(null);
+const isUploading = ref(false);
 
 const dataManagementStatus = ref<DataManagementStatus | null>(null);
 const dataManagementLoading = ref(false);
@@ -199,9 +476,26 @@ const postgresqlInfo = computed(() => dataManagementStatus.value?.postgresql || 
 const settingsDraft = ref({
   minimax: { apiKey: "", model: "" },
   deepseek: { apiKey: "", model: "" },
-  openai: { apiKey: "", baseUrl: "", model: "" }
+  openai: { apiKey: "", baseUrl: "", model: "" },
+  gemini: { apiKey: "", baseUrl: "", model: "" }
 });
 const sidebarWidth = ref(248);
+const chatInputHeight = ref<number | null>(null);
+const textareaRef = ref<HTMLTextAreaElement | null>(null);
+
+const adjustTextareaHeight = () => {
+  if (chatInputHeight.value) return; // If manually resized, don't override with auto-grow
+  nextTick(() => {
+    const el = textareaRef.value;
+    if (el) {
+      el.style.height = "auto";
+      el.style.height = `${el.scrollHeight}px`;
+    }
+  });
+};
+
+watch(inputText, adjustTextareaHeight);
+
 const systemHealth = ref(t("chat.unknown"));
 const promptTemplates = ref<PromptTemplate[]>([
   { id: "image-detail", title: t("prompt.imageDetailTitle"), provider: "MiniMax", content: t("prompt.imageDetailContent") },
@@ -211,7 +505,7 @@ const promptTemplates = ref<PromptTemplate[]>([
 const promptDraft = ref({ title: "", content: "", provider: "通用" as PromptTemplate["provider"] });
 const favorites = ref<FavoriteItem[]>([]);
 const selectedAsset = ref<AssetItem | null>(null);
-const activeAssetTab = ref<'all' | 'image' | 'audio'>('all');
+const activeAssetTab = ref<'all' | 'image' | 'audio' | 'document'>('all');
 const selectedAssetKeys = ref<string[]>([]);
 
 watch([activeAssetTab, activeView], () => {
@@ -219,7 +513,7 @@ watch([activeAssetTab, activeView], () => {
 });
 
 let logEventSource: EventSource | null = null;
-let resizing: "sidebar" | null = null;
+let resizing: "sidebar" | "chatInput" | null = null;
 
 const providerMeta = {
   minimax: {
@@ -241,14 +535,60 @@ const providerMeta = {
     subtitle: t("chat.openaiSubtitle"),
     emptyTitle: t("chat.openaiEmptyTitle"),
     emptyDesc: t("chat.openaiEmptyDesc")
+  },
+  gemini: {
+    label: "Gemini",
+    subtitle: t("chat.geminiSubtitle"),
+    accent: "purple",
+    emptyTitle: t("chat.geminiEmptyTitle"),
+    emptyDesc: t("chat.geminiEmptyDesc")
   }
 } as const;
 
-const messages = computed(() => activeProvider.value === "minimax" ? minimaxMessages.value : activeProvider.value === "deepseek" ? deepSeekMessages.value : openaiMessages.value);
+const messages = computed(() => {
+  if (activeProvider.value === "minimax") return minimaxMessages.value;
+  if (activeProvider.value === "deepseek") return deepSeekMessages.value;
+  if (activeProvider.value === "openai") return openaiMessages.value;
+  return geminiMessages.value;
+});
 const activeMeta = computed(() => providerMeta[activeProvider.value]);
 const minimaxModels = computed(() => settingsState.value?.minimax?.models || []);
 const deepSeekModels = computed(() => settingsState.value?.deepseek?.models || []);
 const openaiModels = computed(() => settingsState.value?.openai?.models || []);
+const geminiModels = computed(() => settingsState.value?.gemini?.models || []);
+const availableGeminiModels = computed(() => {
+  if (!geminiCapabilities.value || !geminiCapabilities.value.models) {
+    return settingsState.value?.gemini?.models || [];
+  }
+  // Filter to only available, non-thinking, non-image models
+  const available = geminiCapabilities.value.models.filter((m: any) => {
+    if (!m.available) return false;
+    const lower = (m.id as string).toLowerCase();
+    // Exclude pure thinking variants (they are same model, just different mode)
+    if (lower.endsWith('-thinking')) return false;
+    // Exclude image models from text chat selector
+    if (lower.includes('image')) return false;
+    return true;
+  });
+  // Deduplicate by displayName: keep the shortest (cleanest) model ID per name
+  const seen = new Map<string, any>();
+  for (const m of available) {
+    const name = formatModelInfo(m.id).displayName;
+    if (!seen.has(name)) {
+      seen.set(name, m);
+    } else {
+      // Prefer shorter (simpler) ID
+      if ((m.id as string).length < seen.get(name).id.length) {
+        seen.set(name, m);
+      }
+    }
+  }
+  return Array.from(seen.values());
+});
+const isGeminiImageAvailable = computed(() => {
+  if (!geminiCapabilities.value || !geminiCapabilities.value.models) return false;
+  return geminiCapabilities.value.models.some((m: any) => m.available && (m.id.includes("image") || m.id === "gemini-3-pro-image"));
+});
 const minimaxSubViews: MainView[] = ["speech", "translation", "imageHistory", "ttsHistory"];
 const showMiniMaxSubnav = computed(() => activeProvider.value === "minimax" && (activeView.value === "chat" || minimaxSubViews.includes(activeView.value)));
 const providerSessions = computed(() => chatSessions.value.filter(session => session.provider === activeProvider.value));
@@ -300,7 +640,14 @@ const assetItems = computed<AssetItem[]>(() => [
       title: item.text || t("history.defaultTtsText"),
       subtitle: `${item.voiceId || "voice"} · ${item.format || "audio"} · tts`,
       url: String(item.audioUrl || "")
-    }))
+    })),
+  ...documents.value.map(item => ({
+    id: String(item.id),
+    type: "document" as const,
+    title: item.name,
+    subtitle: `${item.type.toUpperCase()} · ${(item.sizeBytes / 1024).toFixed(1)} KB · ${(item.chunks?.length) || 0} 分片`,
+    url: String(item.url || "")
+  }))
 ]);
 
 const filteredAssetItems = computed(() => {
@@ -309,6 +656,9 @@ const filteredAssetItems = computed(() => {
   }
   if (activeAssetTab.value === 'audio') {
     return assetItems.value.filter(item => item.type === 'audio');
+  }
+  if (activeAssetTab.value === 'document') {
+    return assetItems.value.filter(item => item.type === 'document');
   }
   return assetItems.value;
 });
@@ -424,6 +774,14 @@ const loadHistories = async () => {
       } catch (err: any) {
         addLog("Failed to load TTS history: " + (err?.message || "unknown error"));
       }
+    })(),
+    (async () => {
+      try {
+        const docRes = await documentApi.list();
+        documents.value = (docRes.data || []).sort((a, b) => b.uploadTime - a.uploadTime);
+      } catch (err: any) {
+        addLog("Failed to load RAG documents: " + (err?.message || "unknown error"));
+      }
     })()
   ]);
 };
@@ -460,7 +818,7 @@ const defaultSession = (provider: ChatProvider): SessionRecord => {
   return {
     id: `${provider}-${Date.now()}-${Math.random().toString(16).slice(2)}`,
     provider,
-    title: provider === "minimax" ? t("chat.minimaxDefaultName") : provider === "deepseek" ? t("chat.deepseekDefaultName") : t("chat.openaiDefaultName"),
+    title: provider === "minimax" ? t("chat.minimaxDefaultName") : provider === "deepseek" ? t("chat.deepseekDefaultName") : provider === "openai" ? t("chat.openaiDefaultName") : t("chat.geminiDefaultName"),
     createdAt: now,
     updatedAt: now,
     messages: []
@@ -476,13 +834,20 @@ const syncMessagesFromSession = (provider: ChatProvider) => {
   const session = chatSessions.value.find(item => item.id === activeSessionIds.value[provider]);
   if (provider === "minimax") minimaxMessages.value = session ? [...session.messages] : [];
   else if (provider === "deepseek") deepSeekMessages.value = session ? [...session.messages] : [];
-  else openaiMessages.value = session ? [...session.messages] : [];
+  else if (provider === "openai") openaiMessages.value = session ? [...session.messages] : [];
+  else geminiMessages.value = session ? [...session.messages] : [];
 };
 
 const saveActiveSession = (provider: ChatProvider) => {
   const session = chatSessions.value.find(item => item.id === activeSessionIds.value[provider]);
   if (!session) return;
-  session.messages = provider === "minimax" ? [...minimaxMessages.value] : provider === "deepseek" ? [...deepSeekMessages.value] : [...openaiMessages.value];
+  session.messages = provider === "minimax"
+    ? [...minimaxMessages.value]
+    : provider === "deepseek"
+      ? [...deepSeekMessages.value]
+      : provider === "openai"
+        ? [...openaiMessages.value]
+        : [...geminiMessages.value];
   session.updatedAt = new Date().toISOString();
   const firstUserMessage = session.messages.find(item => item.role === "user")?.content;
   if (firstUserMessage && session.title.endsWith(t("chat.minimaxDefaultName").split(" ")[1] || t("chat.minimaxDefaultName"))) {
@@ -507,7 +872,12 @@ const ensureSessions = () => {
     chatSessions.value.push(session);
     activeSessionIds.value.openai = session.id;
   }
-  (["minimax", "deepseek", "openai"] as ChatProvider[]).forEach(provider => {
+  if (!chatSessions.value.some(session => session.provider === "gemini")) {
+    const session = defaultSession("gemini");
+    chatSessions.value.push(session);
+    activeSessionIds.value.gemini = session.id;
+  }
+  (["minimax", "deepseek", "openai", "gemini"] as ChatProvider[]).forEach(provider => {
     const currentActiveId = activeSessionIds.value[provider];
     const activeSession = chatSessions.value.find(session => session.id === currentActiveId);
     
@@ -529,7 +899,13 @@ const ensureSessions = () => {
 
 const createSession = (provider: ChatProvider = activeProvider.value) => {
   const session = defaultSession(provider);
-  session.title = provider === "minimax" ? t("chat.newMinimaxName") : provider === "deepseek" ? t("chat.newDeepseekName") : t("chat.newOpenAIName");
+  session.title = provider === "minimax"
+    ? t("chat.newMinimaxName")
+    : provider === "deepseek"
+      ? t("chat.newDeepseekName")
+      : provider === "openai"
+        ? t("chat.newOpenAIName")
+        : t("chat.newGeminiName");
   chatSessions.value.unshift(session);
   activeSessionIds.value[provider] = session.id;
   activeProvider.value = provider;
@@ -609,6 +985,12 @@ const loadSettings = async () => {
     settingsDraft.value.openai.model = settingsState.value?.openai?.model || "";
     settingsDraft.value.openai.baseUrl = settingsState.value?.openai?.baseUrl || "";
     settingsDraft.value.openai.apiKey = "";
+    settingsDraft.value.gemini.model = settingsState.value?.gemini?.model || "";
+    settingsDraft.value.gemini.baseUrl = settingsState.value?.gemini?.baseUrl || "";
+    settingsDraft.value.gemini.apiKey = "";
+    if (settingsState.value?.gemini?.model) {
+      selectedGeminiModel.value = settingsState.value.gemini.model;
+    }
   } catch (err: any) {
     addLog("Settings load failed: " + (err?.message || "unknown error"));
   } finally {
@@ -630,11 +1012,15 @@ const refreshProviderModels = async (provider: ChatProvider) => {
 const saveProviderSettings = async (provider: ChatProvider) => {
   settingsLoading.value = true;
   try {
-    const draft = settingsDraft.value[provider];
-    const payload: { apiKey?: string; model?: string } = { model: draft.model };
+    const draft = settingsDraft.value[provider] as any;
+    const payload: { apiKey?: string; model?: string; baseUrl?: string } = { model: draft.model };
     if (draft.apiKey.trim()) payload.apiKey = draft.apiKey.trim();
+    if (draft.baseUrl && draft.baseUrl.trim()) payload.baseUrl = draft.baseUrl.trim();
     const res = await settingsApi.update(provider, payload);
     settingsState.value = { ...settingsState.value, [provider]: res.data };
+    if (provider === "gemini" && res.data?.model) {
+      selectedGeminiModel.value = res.data.model;
+    }
     draft.apiKey = "";
     addLog(`${provider} settings saved.`);
     addNotification("success", t("settings.saveSuccess"), `${providerMeta[provider].label} ${t("settings.saveSuccessDesc")}`);
@@ -651,6 +1037,103 @@ const openDeepSeekUsage = () => {
   window.open("https://platform.deepseek.com/usage", "_blank");
 };
 
+const loadGeminiCapabilities = async () => {
+  try {
+    // First: quickly load cached capabilities to populate the UI fast
+    const res = await geminiApi.capabilities();
+    geminiCapabilities.value = res.data;
+  } catch (err: any) {
+    addLog("加载 Gemini 能力失败：" + (err?.message || "未知错误"));
+  }
+  // Then: trigger a background probe to get fresh availability data
+  // (silent mode — no task log, just updates the list)
+  handleGeminiProbe(true);
+};
+
+const handleGeminiProbe = async (silent = false) => {
+  if (geminiProbeLoading.value) return;
+  geminiProbeLoading.value = true;
+  const task = silent ? null : createTask("检测 Gemini 中转模型", "gemini", "开始探测本地中转站的所有候选模型可用性...");
+  try {
+    const res = await geminiApi.probe();
+    geminiCapabilities.value = res.data;
+    if (task) {
+      finishTask(task, "success", "Gemini 中转模型探测完成。可用模型数：" + (res.data?.models?.filter((m: any) => m.available)?.length || 0));
+    }
+  } catch (err: any) {
+    if (task) {
+      finishTask(task, "failed", err?.message || "探测失败");
+      addLog("探测 Gemini 模型失败：" + (err?.message || "未知错误"));
+    }
+  } finally {
+    geminiProbeLoading.value = false;
+  }
+};
+
+const triggerFileUpload = () => {
+  console.log("triggerFileUpload called, fileInput.value is:", fileInput.value);
+  if (fileInput.value) {
+    fileInput.value.click();
+  } else {
+    alert("上传控件未初始化，请稍后重试或检查控制台。");
+  }
+};
+
+const handleFileUpload = async (event: Event) => {
+  const target = event.target as HTMLInputElement;
+  if (!target.files || !target.files[0]) {
+    console.log("handleFileUpload: No file selected.");
+    return;
+  }
+  const file = target.files[0];
+  console.log("handleFileUpload: Selected file:", file.name, file.size, file.type);
+  isUploading.value = true;
+  addLog("开始上传多模态附件：" + file.name + " (" + file.size + " 字节)");
+  const task = createTask("上传多模态附件", "gemini", "正在上传文件：" + file.name);
+  try {
+    const res = await systemApi.upload(file);
+    console.log("handleFileUpload: Upload response received:", res.data);
+    if (res.data && res.data.success) {
+      if (res.data.type === 'document') {
+        finishTask(task, "success", "成功上传并解析本地文档：" + file.name);
+        addNotification("success", "已导入知识库", file.name);
+        addLog("文档已成功导入 RAG 知识库：" + file.name + ", ID: " + res.data.id);
+        alert("文档《" + file.name + "》已成功导入本地知识库，已为您自动勾选关联！");
+        await loadHistories();
+        if (res.data.id && !selectedDocIds.value.includes(res.data.id)) {
+          selectedDocIds.value.push(res.data.id);
+        }
+      } else {
+        uploadedFiles.value.push({
+          url: res.data.url,
+          type: res.data.type,
+          name: res.data.name
+        });
+        finishTask(task, "success", "成功上传文件：" + file.name);
+        addNotification("success", "上传成功", file.name);
+        addLog("多模态附件上传成功：" + file.name + ", URL: " + res.data.url);
+        alert("文件《" + file.name + "》上传成功，已放入发送队列！");
+      }
+    } else {
+      throw new Error(res.data?.message || "接口返回失败");
+    }
+  } catch (err: any) {
+    const errMsg = err?.response?.data?.message || err?.message || "网络请求失败";
+    console.error("handleFileUpload: Upload error:", err);
+    finishTask(task, "failed", errMsg);
+    addNotification("error", "上传失败", errMsg);
+    addLog("上传附件失败：" + errMsg);
+    alert("上传失败原因: " + errMsg);
+  } finally {
+    isUploading.value = false;
+    target.value = "";
+  }
+};
+
+const removeUploadedFile = (index: number) => {
+  uploadedFiles.value.splice(index, 1);
+};
+
 const loadApiStatus = async () => {
   try {
     const healthRes = await systemApi.getHealth();
@@ -658,7 +1141,7 @@ const loadApiStatus = async () => {
   } catch {
     systemHealth.value = t("apiStatus.statusError");
   }
-  await Promise.all([loadSettings(), loadDeepSeekAccount()]);
+  await Promise.all([loadSettings(), loadDeepSeekAccount(), loadGeminiCapabilities()]);
 };
 
 const persistTtsUrls = () => {
@@ -780,7 +1263,7 @@ const favoriteMessage = (message: ChatMessage, index: number) => {
   });
 };
 
-const favoriteAsset = (asset: { id: string; type: "image" | "audio"; title: string; subtitle: string; url: string }) => {
+const favoriteAsset = (asset: AssetItem) => {
   addFavorite({
     id: `${asset.type}-${asset.id}`,
     type: asset.type,
@@ -813,6 +1296,8 @@ const deleteAsset = async (asset: AssetItem) => {
     try {
       if (asset.type === 'image') {
         await imageApi.deleteHistory(asset.id);
+      } else if (asset.type === 'document') {
+        await documentApi.delete(asset.id);
       } else {
         await ttsApi.deleteHistory(asset.id);
       }
@@ -872,6 +1357,8 @@ const deleteSelectedAssets = async () => {
       try {
         if (type === 'image') {
           await imageApi.deleteHistory(id);
+        } else if (type === 'document') {
+          await documentApi.delete(id);
         } else {
           await ttsApi.deleteHistory(id);
         }
@@ -949,6 +1436,9 @@ const exportMarkdown = () => {
     "## OpenAI Chat",
     ...chatSessions.value.filter(item => item.provider === "openai").flatMap(session => [`### ${session.title}`, ...session.messages.map(item => `- **${item.role}**: ${item.content}`)]),
     "",
+    "## Gemini Chat",
+    ...chatSessions.value.filter(item => item.provider === "gemini").flatMap(session => [`### ${session.title}`, ...session.messages.map(item => `- **${item.role}**: ${item.content}`)]),
+    "",
     "## Favorites",
     ...favorites.value.map(item => `- **${item.title}** (${item.type}) ${item.content || item.url || ""}`)
   ];
@@ -957,7 +1447,8 @@ const exportMarkdown = () => {
 
 const persistLayout = () => {
   localStorage.setItem("weizhi.layout", JSON.stringify({
-    sidebarWidth: sidebarWidth.value
+    sidebarWidth: sidebarWidth.value,
+    chatInputHeight: chatInputHeight.value
   }));
 };
 
@@ -967,15 +1458,24 @@ const restoreLayout = () => {
     if (!raw) return;
     const data = JSON.parse(raw);
     if (typeof data.sidebarWidth === "number") sidebarWidth.value = Math.min(420, Math.max(180, data.sidebarWidth));
+    if (typeof data.chatInputHeight === "number") chatInputHeight.value = Math.min(600, Math.max(90, data.chatInputHeight));
   } catch {
     // Ignore invalid local storage state.
   }
 };
 
-const startResize = (target: "sidebar", event: MouseEvent) => {
+const startResize = (target: "sidebar" | "chatInput", event: MouseEvent) => {
   resizing = target;
   event.preventDefault();
   document.body.classList.add("is-resizing");
+  
+  if (target === "chatInput") {
+    const inputContainerEl = document.querySelector(".input-container") as HTMLElement;
+    if (inputContainerEl && chatInputHeight.value === null) {
+      chatInputHeight.value = inputContainerEl.offsetHeight;
+    }
+  }
+
   window.addEventListener("mousemove", resizeLayout);
   window.addEventListener("mouseup", stopResize);
 };
@@ -984,6 +1484,10 @@ const resizeLayout = (event: MouseEvent) => {
   if (!resizing) return;
   if (resizing === "sidebar") {
     sidebarWidth.value = Math.min(420, Math.max(180, event.clientX));
+  } else if (resizing === "chatInput") {
+    const rawHeight = window.innerHeight - event.clientY;
+    const maxHeight = Math.min(600, window.innerHeight * 0.6);
+    chatInputHeight.value = Math.min(maxHeight, Math.max(90, rawHeight));
   }
 };
 
@@ -993,6 +1497,12 @@ const stopResize = () => {
   document.body.classList.remove("is-resizing");
   window.removeEventListener("mousemove", resizeLayout);
   window.removeEventListener("mouseup", stopResize);
+};
+
+const handleGlobalError = (event: Event) => {
+  const customEvt = event as CustomEvent;
+  const errorMsg = customEvt.detail?.message || "Unknown error";
+  addNotification("error", t("notifications.systemError"), errorMsg);
 };
 
 onMounted(async () => {
@@ -1006,7 +1516,7 @@ onMounted(async () => {
   addLog("System Initialized. Log stream connected.");
   await loadLogEntries();
   await Promise.all([loadHistories(), loadVoices()]);
-  await Promise.all([loadDeepSeekAccount(), loadSettings()]);
+  await Promise.all([loadDeepSeekAccount(), loadSettings(), loadGeminiCapabilities()]);
   try {
     const storedSessions = localStorage.getItem("weizhi.chatSessions");
     if (storedSessions) chatSessions.value = JSON.parse(storedSessions);
@@ -1055,20 +1565,54 @@ onMounted(async () => {
       setTheme(storedTheme);
     }
   } catch {}
+  
+  window.addEventListener("click", closeModelDropdown);
+  window.addEventListener("weizhi-global-error", handleGlobalError);
+  
+  // 启动程序自动探测可用模型
+  handleGeminiProbe();
 });
 
 onBeforeUnmount(() => {
   if (logEventSource) logEventSource.close();
+  window.removeEventListener("click", closeModelDropdown);
+  window.removeEventListener("weizhi-global-error", handleGlobalError);
   stopResize();
 });
 
 const handleSend = async () => {
-  if (!inputText.value.trim() || isThinking.value) return;
-  const userMsg = inputText.value.trim();
+  if ((!inputText.value.trim() && uploadedFiles.value.length === 0) || isThinking.value) return;
+  
+  let userMsg = inputText.value.trim();
+  const mediaItems: MediaItem[] = uploadedFiles.value.map(file => ({
+    type: file.type,
+    url: file.url
+  }));
+
+  if (uploadedFiles.value.length > 0) {
+    const mediaTags = uploadedFiles.value.map(file => {
+      if (file.type === "image") {
+        return `\n![${file.name}](${file.url})`;
+      } else {
+        return `\n[语音](${file.url})`;
+      }
+    }).join("");
+    userMsg += mediaTags;
+  }
+
+  // Clear uploaded files state
+  uploadedFiles.value = [];
+
   const provider = activeProvider.value;
   const task = createTask(`${providerMeta[provider].label} ${t("chat.qaTask")}`, provider, userMsg.slice(0, 80));
-  const targetMessages = provider === "minimax" ? minimaxMessages.value : provider === "deepseek" ? deepSeekMessages.value : openaiMessages.value;
-  targetMessages.push({ role: "user", content: userMsg });
+  const targetMessages = provider === "minimax"
+    ? minimaxMessages.value
+    : provider === "deepseek"
+      ? deepSeekMessages.value
+      : provider === "openai"
+        ? openaiMessages.value
+        : geminiMessages.value;
+  targetMessages.push({ role: "user", content: userMsg, media: mediaItems });
   saveActiveSession(provider);
   scrollChatToBottom();
   inputText.value = "";
@@ -1081,7 +1625,10 @@ const handleSend = async () => {
   // Helper to check if this is an image prompt (which cannot be streamed and must use blocking endpoint)
   const isImagePrompt = (input: string) => {
     const s = input.toLowerCase();
-    return (s.includes("生成") || s.includes("画") || s.includes("创建") || s.includes("draw"))
+    const questionMarkers = ["为什么", "怎么", "如何", "啥", "什么", "吗", "?", "？", "why", "how", "what"];
+    if (s.includes("/api/images/files/") || s.includes("图片已生成")) return false;
+    if (questionMarkers.some(marker => s.includes(marker))) return false;
+    return (s.includes("生成") || s.includes("画") || s.includes("创建") || s.includes("draw") || s.includes("create"))
         && (s.includes("图片") || s.includes("图像") || s.includes("照片") || s.includes("image") || s.includes("picture"));
   };
 
@@ -1091,7 +1638,9 @@ const handleSend = async () => {
       ? deepSeekApi.ask(userMsg, targetMessages.slice(0, -1).map((message): ProviderMessage => ({ role: message.role, content: message.content })), options)
       : provider === "openai"
         ? openaiApi.ask(userMsg, targetMessages.slice(0, -1).map((message): ProviderMessage => ({ role: message.role, content: message.content })), options)
-        : chatApi.ask(userMsg, targetMessages.slice(0, -1).map((message): ProviderMessage => ({ role: message.role, content: message.content })), options);
+        : provider === "gemini"
+          ? geminiApi.ask(userMsg, targetMessages.slice(0, -1).map((message): ProviderMessage => ({ role: message.role, content: message.content })), geminiMode.value, selectedDocIds.value, selectedGeminiModel.value, options)
+          : chatApi.ask(userMsg, targetMessages.slice(0, -1).map((message): ProviderMessage => ({ role: message.role, content: message.content })), options);
 
     request.then(async (res) => {
       const payload = res.data;
@@ -1122,7 +1671,9 @@ const handleSend = async () => {
       ? deepSeekApi.streamUrl()
       : provider === "openai"
         ? openaiApi.streamUrl()
-        : chatApi.streamUrl();
+        : provider === "gemini"
+          ? geminiApi.streamUrl()
+          : chatApi.streamUrl();
 
     // Push an initial empty assistant message block
     const assistantMsg = ref<ChatMessage>({ role: "assistant", content: "", media: [] });
@@ -1134,7 +1685,10 @@ const handleSend = async () => {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          messages: targetMessages.slice(0, -1).map(x => ({ role: x.role, content: x.content }))
+          messages: targetMessages.slice(0, -1).map(x => ({ role: x.role, content: x.content })),
+          mode: provider === "gemini" ? geminiMode.value : undefined,
+          documentIds: provider === "gemini" ? selectedDocIds.value : undefined,
+          model: provider === "gemini" ? selectedGeminiModel.value : undefined
         }),
         signal: chatAbortController.value.signal
       });
@@ -1148,6 +1702,18 @@ const handleSend = async () => {
 
       const decoder = new TextDecoder("utf-8");
       let buffer = "";
+      let currentEvent = "message";
+      let inReasoningBlock = false;
+      let rafScrollPending = false;
+      const throttledScroll = () => {
+        if (!rafScrollPending) {
+          rafScrollPending = true;
+          requestAnimationFrame(() => {
+            scrollChatToBottom();
+            rafScrollPending = false;
+          });
+        }
+      };
 
       while (true) {
         const { done, value } = await reader.read();
@@ -1158,19 +1724,58 @@ const handleSend = async () => {
         buffer = lines.pop() || ""; // Save partial line to buffer
 
         for (const line of lines) {
-          const cleaned = line.trim();
-          if (cleaned.startsWith("data:")) {
-            const dataToken = cleaned.substring(5).trim();
-            // Append token
-            assistantMsg.value.content += dataToken;
-            scrollChatToBottom();
-          } else if (cleaned.startsWith("event:error") || cleaned.startsWith("error:")) {
-            const errorLine = lines.find(x => x.startsWith("data:"));
-            if (errorLine) {
-              assistantMsg.value.content += "\nError: " + errorLine.substring(5).trim();
+          const trimmed = line.trim();
+          if (!trimmed) {
+            currentEvent = "message";
+            continue;
+          }
+
+          if (trimmed.startsWith("event:")) {
+            currentEvent = trimmed.substring(6).trim();
+          } else if (trimmed.startsWith("data:")) {
+            const rawToken = line.substring(5);
+            const dataToken = rawToken === "" ? "\n" : rawToken;
+            if (dataToken.trim() === "[DONE]") break;
+            
+            if (currentEvent === "error") {
+              assistantMsg.value.content += "\n[Error: " + dataToken.trim() + "]";
+            } else if (currentEvent === "reasoning") {
+              // Properly accumulate reasoning tokens inside a single <think> block
+              if (!inReasoningBlock) {
+                assistantMsg.value.content += "<think>\n";
+                inReasoningBlock = true;
+              }
+              assistantMsg.value.content += dataToken;
+            } else {
+              // First non-reasoning token: close the reasoning block if open
+              if (inReasoningBlock) {
+                assistantMsg.value.content += "\n</think>\n\n";
+                inReasoningBlock = false;
+              }
+              if (currentEvent === "media") {
+                try {
+                  const mediaPayload = JSON.parse(dataToken.trim());
+                  if (mediaPayload?.type && mediaPayload?.url) {
+                    assistantMsg.value.media = [...(assistantMsg.value.media || []), { type: mediaPayload.type, url: mediaPayload.url }];
+                  }
+                } catch {
+                  assistantMsg.value.content += dataToken;
+                }
+              } else {
+                // Preserve spaces and newlines
+                assistantMsg.value.content += dataToken;
+              }
             }
+            throttledScroll();
+          } else if (trimmed.startsWith("error:")) {
+            assistantMsg.value.content += "\n[Error: " + trimmed.substring(6).trim() + "]";
+            throttledScroll();
           }
         }
+      }
+      // Close any unclosed reasoning block (edge case: stream ended mid-think)
+      if (inReasoningBlock) {
+        assistantMsg.value.content += "\n</think>\n\n";
       }
       saveActiveSession(provider);
       finishTask(task, "success", t("chat.qaSuccess"));
@@ -1351,7 +1956,8 @@ const openDataManagement = () => {
 const clearCurrentConversation = () => {
   if (activeProvider.value === "minimax") minimaxMessages.value = [];
   else if (activeProvider.value === "deepseek") deepSeekMessages.value = [];
-  else openaiMessages.value = [];
+  else if (activeProvider.value === "openai") openaiMessages.value = [];
+  else geminiMessages.value = [];
   saveActiveSession(activeProvider.value);
 };
 
@@ -1363,7 +1969,8 @@ const clearSession = (provider: ChatProvider) => {
   }
   if (provider === "minimax") minimaxMessages.value = [];
   else if (provider === "deepseek") deepSeekMessages.value = [];
-  else openaiMessages.value = [];
+  else if (provider === "openai") openaiMessages.value = [];
+  else geminiMessages.value = [];
   saveSessions();
 };
 
@@ -1436,6 +2043,7 @@ provide('appState', {
               <button class="preview-btn" @click="switchProvider('minimax')">{{ $t("home.enterMinimax") }}</button>
               <button class="preview-btn secondary" @click="switchProvider('deepseek')">{{ $t("home.enterDeepseek") }}</button>
               <button class="preview-btn secondary" @click="switchProvider('openai')">进入 OpenAI</button>
+              <button class="preview-btn secondary" @click="switchProvider('gemini')">{{ $t("home.enterGemini") }}</button>
               <button class="preview-btn secondary" @click="openAssets">{{ $t("home.viewAssets") }}</button>
             </div>
           </div>
@@ -1587,6 +2195,81 @@ provide('appState', {
               <button class="preview-btn secondary" @click="refreshProviderModels('openai')">{{ $t("settings.refreshModel") }}</button>
             </div>
             <button class="save-settings-btn" :disabled="settingsLoading" @click="saveProviderSettings('openai')">{{ $t("settings.saveOpenai") }}</button>
+          </section>
+
+          <section class="settings-card gemini-card">
+            <div class="settings-card-head">
+              <strong>Gemini 会话</strong>
+              <span>{{ settingsState?.gemini?.apiKeyConfigured ? settingsState?.gemini?.apiKeyMasked : $t("apiStatus.notConfigured") }}</span>
+            </div>
+            <label>Base URL</label>
+            <input v-model="settingsDraft.gemini.baseUrl" type="text" placeholder="http://127.0.0.1:8045/v1" />
+            <label>API Key</label>
+            <input v-model="settingsDraft.gemini.apiKey" type="password" :placeholder="$t('settings.emptyKey')" />
+            <label>{{ $t("settings.modelLabel") }}</label>
+            <div class="settings-row">
+              <select v-model="settingsDraft.gemini.model">
+                <option v-for="model in geminiModels" :key="model.id" :value="model.id">{{ model.name || model.id }}</option>
+              </select>
+              <button class="preview-btn secondary" @click="refreshProviderModels('gemini')">{{ $t("settings.refreshModel") }}</button>
+            </div>
+            <button class="save-settings-btn" :disabled="settingsLoading" @click="saveProviderSettings('gemini')">{{ $t("settings.saveGemini") }}</button>
+
+            <!-- Model capability probe section -->
+            <div class="gemini-probe-section" style="margin-top: 24px; padding-top: 20px; border-top: 1px solid rgba(255,255,255,0.08);">
+              <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px;">
+                <h4 style="margin: 0; font-size: 14px; font-weight: 600; color: var(--text-color);">检测中转模型</h4>
+                <button class="preview-btn secondary" :disabled="geminiProbeLoading" @click="handleGeminiProbe(false)" style="padding: 6px 12px; font-size: 12px;">
+                  <span v-if="geminiProbeLoading">探测中...</span>
+                  <span v-else>立即检测</span>
+                </button>
+              </div>
+              <p style="font-size: 12px; color: var(--text-muted); margin: 0 0 12px 0;">
+                中转地址: {{ geminiCapabilities?.baseUrl || 'http://127.0.0.1:8045/v1' }}
+                <span v-if="geminiCapabilities?.checkedAt" style="margin-left: 8px;">检测时间: {{ new Date(geminiCapabilities.checkedAt).toLocaleTimeString() }}</span>
+                <span v-if="geminiCapabilities?.accountEmail" style="margin-left: 8px; color: #10b981;">账号: {{ geminiCapabilities.accountEmail }}</span>
+              </p>
+              
+              <div v-if="geminiCapabilities?.models && geminiCapabilities.models.length" style="max-height: 250px; overflow-y: auto; border: 1px solid rgba(255,255,255,0.08); border-radius: 6px;">
+                <table style="width: 100%; border-collapse: collapse; font-size: 12px; text-align: left;">
+                  <thead>
+                    <tr style="background: rgba(255,255,255,0.03); border-bottom: 1px solid rgba(255,255,255,0.08); color: var(--text-muted);">
+                      <th style="padding: 8px 12px;">模型 ID</th>
+                      <th style="padding: 8px 12px;">状态</th>
+                      <th style="padding: 8px 12px;">延迟</th>
+                      <th style="padding: 8px 12px;">映射与账号</th>
+                      <th style="padding: 8px 12px;">建议用途</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    <tr v-for="m in geminiCapabilities.models" :key="m.id" style="border-bottom: 1px solid rgba(255,255,255,0.04); background: rgba(255,255,255,0.01);">
+                      <td style="padding: 8px 12px; font-family: monospace; font-size: 11px;">
+                        <span :style="{ color: m.available ? '#60a5fa' : '#9ca3af' }">{{ m.id }}</span>
+                        <div style="font-size: 10px; color: #9ca3af; margin-top: 2px;">组: {{ m.group }}</div>
+                      </td>
+                      <td style="padding: 8px 12px;">
+                        <span v-if="m.available" style="color: #34d399; font-weight: 500; display: inline-flex; align-items: center; gap: 4px;">
+                          <span style="display: inline-block; width: 6px; height: 6px; border-radius: 50%; background: #34d399;"></span> 可用
+                        </span>
+                        <span v-else style="color: #f87171; font-weight: 500; display: inline-flex; align-items: center; gap: 4px;">
+                          <span style="display: inline-block; width: 6px; height: 6px; border-radius: 50%; background: #f87171;"></span> 不可用 ({{ m.errorType }})
+                        </span>
+                      </td>
+                      <td style="padding: 8px 12px; color: var(--text-muted);">{{ m.available ? m.latencyMs + 'ms' : '--' }}</td>
+                      <td style="padding: 8px 12px; max-width: 150px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">
+                        <div v-if="m.mappedModel" style="color: var(--text-color); font-size: 11px;" :title="m.mappedModel">映射: {{ m.mappedModel }}</div>
+                        <div v-if="m.accountEmail" style="color: #34d399; font-size: 10px;" :title="m.accountEmail">账号: {{ m.accountEmail }}</div>
+                        <div v-if="!m.mappedModel && !m.accountEmail" style="color: var(--text-muted); font-size: 11px;">--</div>
+                      </td>
+                      <td style="padding: 8px 12px; color: var(--text-muted); font-size: 11px; max-width: 200px;" :title="m.recommendedUse">{{ m.recommendedUse }}</td>
+                    </tr>
+                  </tbody>
+                </table>
+              </div>
+              <div v-else style="text-align: center; padding: 20px; border: 1px dashed rgba(255,255,255,0.08); border-radius: 6px; color: var(--text-muted); font-size: 12px;">
+                暂无探测数据，请点击“立即检测”开始扫描。
+              </div>
+            </div>
           </section>
         </div>
       </section>
@@ -1908,6 +2591,13 @@ provide('appState', {
               >
                 {{ $t("assets.tabAudio") }} ({{ assetItems.filter(item => item.type === 'audio').length }})
               </button>
+              <button 
+                class="assets-tab-btn" 
+                :class="{ active: activeAssetTab === 'document' }" 
+                @click="activeAssetTab = 'document'"
+              >
+                文档 ({{ assetItems.filter(item => item.type === 'document').length }})
+              </button>
             </div>
             
             <div class="assets-batch-actions" v-if="filteredAssetItems.length > 0">
@@ -1972,12 +2662,21 @@ provide('appState', {
                 @click.stop="selectedAssetKeys.length > 0 ? toggleSelectAsset(`${asset.type}-${asset.id}`) : openAssetDetail(asset)" 
               />
               <div 
-                v-else 
+                v-else-if="asset.type === 'audio'" 
                 class="asset-audio-box" 
                 @click.stop="selectedAssetKeys.length > 0 ? toggleSelectAsset(`${asset.type}-${asset.id}`) : null"
               >
                 <Volume2 :size="30" />
                 <audio :src="mediaUrl(asset.url)" controls class="audio-preview" @click.stop />
+              </div>
+              <div 
+                v-else-if="asset.type === 'document'" 
+                class="asset-document-box" 
+                @click.stop="selectedAssetKeys.length > 0 ? toggleSelectAsset(`${asset.type}-${asset.id}`) : openAssetDetail(asset)"
+                style="display: flex; flex-direction: column; align-items: center; justify-content: center; height: 160px; background: rgba(255,255,255,0.02); border-bottom: 1px solid rgba(255,255,255,0.06); position: relative; cursor: pointer;"
+              >
+                <FileText :size="40" style="color: #60a5fa; margin-bottom: 8px;" />
+                <span style="font-size: 10px; font-weight: bold; background: rgba(96, 165, 250, 0.15); color: #93c5fd; padding: 2px 6px; border-radius: 4px; text-transform: uppercase;">{{ asset.title.split('.').pop() }}</span>
               </div>
               
               <div 
@@ -2125,6 +2824,53 @@ provide('appState', {
               <em>{{ chatSessions.find(session => session.id === activeSessionIds[activeProvider])?.title || activeMeta.subtitle }}</em>
             </div>
             <div class="toolbar-actions">
+              <div v-if="activeProvider === 'gemini'" class="gemini-mode-toggle" :aria-label="$t('chat.geminiModeLabel')">
+                <button :class="{ active: geminiMode === 'auto' }" @click="geminiMode = 'auto'">{{ $t("chat.geminiModeAuto") }}</button>
+                <button :class="{ active: geminiMode === 'text' }" @click="geminiMode = 'text'">{{ $t("chat.geminiModeText") }}</button>
+                <button :class="{ active: geminiMode === 'code' }" @click="geminiMode = 'code'">代码</button>
+                <button :class="{ active: geminiMode === 'image' }" @click="geminiMode = 'image'">
+                  {{ isGeminiImageAvailable ? $t("chat.geminiModeImage") : '图片提示词' }}
+                </button>
+              </div>
+              <!-- Custom Popover Model Selector -->
+              <div v-if="activeProvider === 'gemini'" class="custom-dropdown-container" style="position: relative; display: inline-block;">
+                <button class="custom-model-trigger" @click.stop="showModelDropdown = !showModelDropdown" title="选择运行模型">
+                  <Cpu :size="13" style="color: #c084fc; margin-right: 6px;" />
+                  <span class="trigger-text">{{ selectedGeminiModel === 'auto' ? '智能自动路由' : formatModelInfo(selectedGeminiModel).displayName }}</span>
+                  <ChevronDown :size="12" style="margin-left: 6px; opacity: 0.7;" />
+                </button>
+
+                <div v-if="showModelDropdown" class="custom-model-dropdown" @click.stop>
+                  <div class="dropdown-header">运行模型</div>
+                  
+                  <!-- Auto Route Option -->
+                  <div class="custom-model-item" :class="{ active: selectedGeminiModel === 'auto' }" @click="selectModel('auto')">
+                    <div class="model-item-main">
+                      <strong class="model-name">智能自动路由</strong>
+                      <span class="model-badge badge-auto">Auto</span>
+                    </div>
+                    <div class="model-desc">根据日常提问、代码、生图自动智能分配</div>
+                  </div>
+                  
+                  <div class="dropdown-divider" v-if="availableGeminiModels.length"></div>
+
+                  <!-- Available Probed Models -->
+                  <div v-for="model in availableGeminiModels" :key="model.id" class="custom-model-item" :class="{ active: selectedGeminiModel === model.id }" @click="selectModel(model.id)">
+                    <div class="model-item-main">
+                      <strong class="model-name">{{ formatModelInfo(model.id).displayName }}</strong>
+                      <span class="model-badge" :class="formatModelInfo(model.id).badgeClass">{{ formatModelInfo(model.id).badgeText }}</span>
+                    </div>
+                    <div class="model-desc">{{ formatModelInfo(model.id).description }}</div>
+                  </div>
+                  
+                  <div v-if="!availableGeminiModels.length" class="empty-dropdown-models">
+                    暂无检测可用模型，请重测
+                  </div>
+                </div>
+              </div>
+              <button v-if="activeProvider === 'gemini'" class="icon-btn" title="检测可用模型" :disabled="geminiProbeLoading" @click="handleGeminiProbe(false)" style="height: 32px; width: 32px; display: flex; align-items: center; justify-content: center; background: var(--bg-input); border: 1px solid var(--border); border-radius: var(--radius-sm); color: var(--text-secondary); cursor: pointer; transition: all 0.2s;">
+                <RefreshCw :size="13" :class="{ 'animate-spin': geminiProbeLoading }" />
+              </button>
               <select class="session-picker" :value="activeSessionIds[activeProvider]" @change="openSession(chatSessions.find(session => session.id === ($event.target as HTMLSelectElement).value)!)">
                 <option v-for="session in providerSessions" :key="session.id" :value="session.id">{{ session.title }}</option>
               </select>
@@ -2161,7 +2907,7 @@ provide('appState', {
                         {{ block.content.trim() }}
                       </div>
                     </div>
-                    <div v-else class="text-body">{{ block.content }}</div>
+                    <div v-else class="text-body" v-html="renderMarkdown(block.content)"></div>
                   </template>
                 </div>
                 <img v-for="(m, j) in (msg.media || []).filter(x => x.type === 'image')" :key="`img-${j}`" :src="mediaUrl(m.url)" class="media-preview image-preview" alt="generated image" />
@@ -2171,11 +2917,83 @@ provide('appState', {
             <div v-if="isThinking" class="message-row assistant"><div class="message-avatar">AI</div><div class="thinking-dots"><span>.</span><span>.</span><span>.</span></div></div>
           </div>
 
-          <div class="input-container">
-            <div class="input-wrapper">
-              <textarea v-model="inputText" :placeholder="$t('chat.placeholder')" @keydown.enter.prevent="handleSend" />
-              <button v-if="isThinking" class="stop-btn" @click="handleStop" :title="$t('chat.stopGeneration')"><Square :size="16" /></button>
-              <button v-else class="send-btn" @click="handleSend" :disabled="!inputText.trim()"><Send :size="18" /></button>
+          <!-- Horizontal Splitter Resizer -->
+          <div 
+            class="horizontal-resizer chat-resizer glass-resizer" 
+            @mousedown.prevent="startResize('chatInput', $event)"
+            @dblclick="chatInputHeight = null; persistLayout();"
+            title="拖动调整高度，双击恢复默认"
+          ></div>
+
+          <div class="input-container" :style="chatInputHeight ? { height: `${chatInputHeight}px` } : {}">
+            <!-- Hidden file input -->
+            <input type="file" ref="fileInput" @change="handleFileUpload" accept="image/*,audio/*,.pdf,.txt,.md" style="display:none" />
+
+            <div class="chat-input-row">
+              <!-- Left: RAG Knowledge Base Document Selector -->
+              <div v-if="activeProvider === 'gemini' && documents.length > 0" class="rag-document-selector-sidebar">
+                <div class="rag-sidebar-header">
+                  <div class="rag-title-container">
+                    <BookOpen :size="12" style="color: #60a5fa;" />
+                    <span>知识库关联 (RAG)</span>
+                  </div>
+                  <div class="rag-actions-container">
+                    <span class="rag-action-link select-all" @click="selectedDocIds = documents.map(d => d.id)">全选</span>
+                    <span class="rag-action-link clear-all" @click="selectedDocIds = []">清除</span>
+                  </div>
+                </div>
+                <div class="rag-sidebar-list">
+                  <label 
+                    v-for="doc in documents" 
+                    :key="doc.id" 
+                    class="rag-doc-sidebar-tag"
+                    :class="{ active: selectedDocIds.includes(doc.id) }"
+                  >
+                    <input 
+                      type="checkbox" 
+                      :value="doc.id" 
+                      v-model="selectedDocIds" 
+                      style="display: none;" 
+                    />
+                    <FileText :size="11" />
+                    <span class="rag-doc-name" :title="doc.name">{{ doc.name }}</span>
+                  </label>
+                </div>
+              </div>
+
+              <!-- Right: Main Input Column -->
+              <div class="chat-input-main">
+                <!-- Attachment preview list -->
+                <div v-if="uploadedFiles.length > 0" class="attachment-preview-list" style="display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 8px; padding: 4px;">
+                  <div v-for="(file, idx) in uploadedFiles" :key="idx" class="attachment-preview-card" style="position: relative; display: flex; align-items: center; background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.1); border-radius: 6px; padding: 4px 8px; font-size: 11px;">
+                    <img v-if="file.type === 'image'" :src="mediaUrl(file.url)" style="width: 32px; height: 32px; object-fit: cover; border-radius: 4px; margin-right: 8px;" />
+                    <Volume2 v-else :size="16" style="margin-right: 8px; color: var(--text-muted);" />
+                    <span style="max-width: 100px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--text-color);">{{ file.name }}</span>
+                    <button @click="removeUploadedFile(idx)" style="background: none; border: none; padding: 0 0 0 8px; color: var(--text-muted); cursor: pointer; display: flex; align-items: center;" title="移除">
+                      <X :size="12" style="color: #f87171;" />
+                    </button>
+                  </div>
+                </div>
+
+                <!-- Input bar -->
+                <div class="input-wrapper">
+                  <!-- Upload button -->
+                  <button v-if="activeProvider === 'gemini'" class="upload-attachment-btn" @click="triggerFileUpload" :disabled="isUploading || isThinking" style="background: none; border: none; padding: 8px; color: var(--text-muted); cursor: pointer; display: flex; align-items: center; justify-content: center; border-radius: 4px; transition: background 0.2s;" title="上传图片或音频">
+                    <ImageIcon v-if="isUploading" class="animate-spin" :size="18" />
+                    <FolderOpen v-else :size="18" />
+                  </button>
+                  
+                  <textarea 
+                    ref="textareaRef"
+                    v-model="inputText" 
+                    :placeholder="$t('chat.placeholder')" 
+                    @keydown.enter.prevent="handleSend"
+                    :class="{ 'resizable-active': chatInputHeight !== null }"
+                  />
+                  <button v-if="isThinking" class="stop-btn" @click="handleStop" :title="$t('chat.stopGeneration')"><Square :size="16" /></button>
+                  <button v-else class="send-btn" @click="handleSend" :disabled="!inputText.trim() && uploadedFiles.length === 0"><Send :size="18" /></button>
+                </div>
+              </div>
             </div>
           </div>
         </div>
@@ -2192,7 +3010,12 @@ provide('appState', {
         </div>
         <div class="asset-modal-body">
           <img v-if="selectedAsset.type === 'image'" :src="mediaUrl(selectedAsset.url)" alt="asset detail" />
-          <audio v-else :src="mediaUrl(selectedAsset.url)" controls class="audio-preview" />
+          <audio v-else-if="selectedAsset.type === 'audio'" :src="mediaUrl(selectedAsset.url)" controls class="audio-preview" />
+          <div v-else-if="selectedAsset.type === 'document'" style="display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 40px 20px; background: rgba(255,255,255,0.03); border-radius: 8px; border: 1px solid rgba(255,255,255,0.05);">
+            <FileText :size="60" style="color: #60a5fa; margin-bottom: 16px;" />
+            <span style="font-size: 14px; font-weight: 500; color: var(--text-color); margin-bottom: 8px; text-align: center;">{{ selectedAsset.title }}</span>
+            <span style="font-size: 12px; color: var(--text-muted);">{{ selectedAsset.subtitle }}</span>
+          </div>
         </div>
         <div class="asset-modal-actions">
           <button class="log-action" @click="favoriteAsset(selectedAsset)">{{ $t("assets.favorite") }}</button>
@@ -2204,6 +3027,15 @@ provide('appState', {
 </template>
 
 <style>
+.animate-spin {
+  animation: spin-kf 1s linear infinite;
+  display: inline-block;
+}
+@keyframes spin-kf {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
+}
+
 /* ── Layout & Resizers ────────────────────────── */
 .app-container {
   display: grid;
@@ -2564,7 +3396,7 @@ provide('appState', {
   height: 100%;
   min-height: 0;
   display: grid;
-  grid-template-rows: 52px minmax(0, 1fr) auto;
+  grid-template-rows: 52px minmax(0, 1fr) 1px auto;
 }
 
 .workspace-toolbar {
@@ -2841,8 +3673,146 @@ provide('appState', {
   padding: 16px clamp(24px, 8vw, 120px) 24px;
   border-top: 1px solid var(--border);
   background: linear-gradient(180deg, transparent, rgba(8, 9, 14, 0.95) 40%);
+  display: flex;
+  flex-direction: column;
+  box-sizing: border-box;
 }
 
+.chat-input-row {
+  display: flex;
+  gap: 16px;
+  width: 100%;
+  max-width: 1100px;
+  margin: 0 auto;
+  align-items: stretch;
+  height: 100%;
+  box-sizing: border-box;
+}
+
+.chat-input-main {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  gap: 8px;
+  height: 100%;
+  box-sizing: border-box;
+}
+
+/* ── RAG Sidebar Document Selector ──────────────── */
+.rag-document-selector-sidebar {
+  width: 220px;
+  flex-shrink: 0;
+  background: rgba(17, 20, 32, 0.55);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+  box-shadow: var(--shadow);
+  display: flex;
+  flex-direction: column;
+  padding: 10px;
+  box-sizing: border-box;
+  max-height: 100%;
+  gap: 8px;
+}
+
+.rag-sidebar-header {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding-bottom: 6px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+}
+
+.rag-title-container {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 11px;
+  color: var(--text-primary);
+  font-weight: 700;
+}
+
+.rag-actions-container {
+  display: flex;
+  gap: 10px;
+  font-size: 10.5px;
+  color: var(--text-muted);
+}
+
+.rag-action-link {
+  cursor: pointer;
+  transition: color 0.2s;
+  font-size: 10.5px;
+}
+
+.rag-action-link.select-all {
+  color: #60a5fa;
+}
+
+.rag-action-link.select-all:hover {
+  color: #93c5fd;
+}
+
+.rag-action-link.clear-all:hover {
+  color: var(--text-primary);
+}
+
+.rag-sidebar-list {
+  flex: 1;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding-right: 2px;
+}
+
+.rag-sidebar-list::-webkit-scrollbar {
+  width: 4px;
+}
+.rag-sidebar-list::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.1);
+  border-radius: 2px;
+}
+
+.rag-doc-sidebar-tag {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 8px;
+  border-radius: 6px;
+  font-size: 11px;
+  cursor: pointer;
+  background: rgba(255, 255, 255, 0.03);
+  border: 1px solid rgba(255, 255, 255, 0.06);
+  color: var(--text-muted);
+  transition: all 0.2s ease;
+  user-select: none;
+  overflow: hidden;
+}
+
+.rag-doc-sidebar-tag:hover {
+  background: rgba(255, 255, 255, 0.06);
+  border-color: rgba(255, 255, 255, 0.12);
+  color: var(--text-primary);
+}
+
+.rag-doc-sidebar-tag.active {
+  background: rgba(96, 165, 250, 0.12);
+  border-color: rgba(96, 165, 250, 0.3);
+  color: #93c5fd;
+  box-shadow: 0 0 8px rgba(96, 165, 250, 0.08);
+}
+
+.rag-doc-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  flex: 1;
+}
+
+/* ── Prompt Input Bar ─────────────────────────── */
 .input-wrapper {
   background: rgba(17, 20, 32, 0.65);
   border: 1px solid var(--border);
@@ -2855,6 +3825,10 @@ provide('appState', {
   backdrop-filter: blur(16px);
   box-shadow: var(--shadow);
   transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+  box-sizing: border-box;
+  width: 100%;
+  flex: 1;
+  min-height: 58px;
 }
 
 .input-wrapper:focus-within {
@@ -2871,12 +3845,47 @@ provide('appState', {
   color: var(--text-primary);
   resize: none;
   padding: 6px 0;
+  margin-right: 12px;
   outline: none;
   font-family: inherit;
   font-size: 14.5px;
-  min-height: 28px;
-  max-height: 160px;
+  height: 36px;
+  min-height: 36px;
+  max-height: 400px;
   line-height: 1.5;
+  overflow-y: auto;
+}
+
+.input-wrapper textarea.resizable-active {
+  height: 100%;
+  align-self: stretch;
+}
+
+/* ── Horizontal Resizer ────────────────────────── */
+.horizontal-resizer {
+  height: 1px;
+  background: var(--border);
+  cursor: row-resize;
+  user-select: none;
+  position: relative;
+  z-index: 10;
+  transition: background 0.25s ease;
+}
+
+.horizontal-resizer::after {
+  content: "";
+  position: absolute;
+  top: -4px;
+  bottom: -4px;
+  left: 0;
+  right: 0;
+  cursor: row-resize;
+}
+
+.horizontal-resizer:hover,
+.horizontal-resizer:active {
+  background: var(--accent);
+  box-shadow: 0 0 8px var(--accent);
 }
 
 .send-btn {
@@ -4249,6 +5258,145 @@ provide('appState', {
 
 .text-body {
   word-break: break-word;
+  line-height: 1.65;
+  font-size: 14px;
+  color: var(--text-primary);
+  white-space: normal;
+}
+
+.text-body p {
+  margin: 0 0 6px 0;
+}
+
+.text-body p:last-child {
+  margin-bottom: 0;
+}
+
+.text-body h1,
+.text-body h2,
+.text-body h3,
+.text-body h4 {
+  color: var(--text-primary);
+  font-weight: 700;
+  margin-top: 12px;
+  margin-bottom: 6px;
+}
+
+.text-body h1 { font-size: 1.5em; border-bottom: 1px solid rgba(255, 255, 255, 0.08); padding-bottom: 6px; }
+.text-body h2 { font-size: 1.35em; border-bottom: 1px solid rgba(255, 255, 255, 0.04); padding-bottom: 4px; }
+.text-body h3 { font-size: 1.2em; }
+.text-body h4 { font-size: 1.1em; }
+
+.text-body code {
+  font-family: var(--font-mono);
+  background: rgba(255, 255, 255, 0.08);
+  padding: 2px 6px;
+  border-radius: 4px;
+  font-size: 0.9em;
+  color: #c084fc;
+}
+
+.text-body a {
+  color: #c084fc;
+  text-decoration: none;
+  border-bottom: 1px dashed rgba(192, 132, 252, 0.4);
+  transition: all 0.2s;
+}
+
+.text-body a:hover {
+  color: #a855f7;
+  border-bottom-color: #a855f7;
+}
+
+.text-body hr {
+  border: none;
+  border-top: 1px solid rgba(255, 255, 255, 0.08);
+  margin: 12px 0;
+}
+
+.text-body ul,
+.text-body ol {
+  margin: 4px 0 6px 20px;
+  padding-left: 0;
+}
+
+.text-body li {
+  margin-bottom: 3px;
+  list-style-position: outside;
+}
+
+.text-body ul > li {
+  list-style-type: disc;
+}
+
+.text-body ol > li {
+  list-style-type: decimal;
+}
+
+/* ── Code Block Wrapper ──────────────────────── */
+.code-block-wrapper {
+  margin: 8px 0;
+  border-radius: 10px;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  background: #1a1b26; /* Tokyo Night Dark main bg */
+  overflow: hidden;
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.25);
+}
+
+.code-block-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 6px 14px;
+  background: rgba(0, 0, 0, 0.3);
+  border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+}
+
+.code-lang {
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.code-copy-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 3px 8px;
+  border: 0;
+  border-radius: 4px;
+  background: rgba(255, 255, 255, 0.05);
+  color: var(--text-muted);
+  font-size: 11px;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.code-copy-btn:hover {
+  background: rgba(255, 255, 255, 0.1);
+  color: var(--text-primary);
+}
+
+.code-copy-btn.copied {
+  background: rgba(16, 185, 129, 0.15);
+  color: #34d399;
+}
+
+.code-block-wrapper pre {
+  margin: 0;
+  padding: 14px;
+  overflow-x: auto;
+}
+
+.code-block-wrapper pre code {
+  background: transparent;
+  padding: 0;
+  border-radius: 0;
+  font-size: 13.5px;
+  color: inherit;
+  font-family: var(--font-mono);
 }
 
 .module-page.assets-page {
@@ -4476,5 +5624,203 @@ provide('appState', {
 .toggle-pill:disabled {
   opacity: 0.5;
   cursor: not-allowed;
+}
+
+.gemini-mode-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  padding: 3px;
+  border: 1px solid rgba(168, 85, 247, 0.28);
+  border-radius: var(--radius-sm);
+  background: rgba(168, 85, 247, 0.08);
+}
+
+.gemini-mode-toggle button {
+  border: 0;
+  border-radius: 5px;
+  padding: 6px 10px;
+  min-width: 44px;
+  background: transparent;
+  color: var(--text-muted);
+  font-size: 12px;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.gemini-mode-toggle button.active {
+  background: rgba(168, 85, 247, 0.9);
+  color: white;
+}
+
+/* ── Custom Popover Model Selector ────────────────────────── */
+.custom-model-trigger {
+  height: 32px;
+  min-width: 140px;
+  max-width: 220px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--bg-input);
+  color: var(--text-primary);
+  padding: 0 12px;
+  font-size: 12.5px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: space-between;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.custom-model-trigger:hover {
+  border-color: #a855f7;
+  background: rgba(168, 85, 247, 0.05);
+}
+
+.custom-model-trigger .trigger-text {
+  flex: 1;
+  text-align: left;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.custom-model-dropdown {
+  position: absolute;
+  top: calc(100% + 6px);
+  left: 0;
+  z-index: 1000;
+  width: 300px;
+  max-height: 380px;
+  overflow-y: auto;
+  overflow-x: hidden;
+  background: rgba(18, 22, 33, 0.97);
+  backdrop-filter: blur(20px);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 10px;
+  box-shadow: 0 12px 40px rgba(0, 0, 0, 0.6);
+  padding: 6px 0;
+  animation: dropdown-fade-in 0.18s cubic-bezier(0.16, 1, 0.3, 1);
+  scrollbar-width: thin;
+  scrollbar-color: rgba(255,255,255,0.15) transparent;
+}
+
+.custom-model-dropdown::-webkit-scrollbar {
+  width: 4px;
+}
+
+.custom-model-dropdown::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.custom-model-dropdown::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.15);
+  border-radius: 2px;
+}
+
+@keyframes dropdown-fade-in {
+  from { opacity: 0; transform: translateY(-8px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+.dropdown-header {
+  padding: 6px 14px 4px 14px;
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  color: var(--text-muted);
+}
+
+.custom-model-item {
+  padding: 8px 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  cursor: pointer;
+  transition: all 0.15s;
+}
+
+.custom-model-item:hover {
+  background: rgba(255, 255, 255, 0.05);
+}
+
+.custom-model-item.active {
+  background: rgba(168, 85, 247, 0.12);
+}
+
+.custom-model-item.active .model-name {
+  color: #c084fc;
+}
+
+.model-item-main {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 8px;
+}
+
+.model-name {
+  font-size: 12.5px;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.model-badge {
+  font-size: 10px;
+  font-weight: 700;
+  padding: 2px 6px;
+  border-radius: 4px;
+  text-transform: uppercase;
+  letter-spacing: 0.3px;
+}
+
+.badge-auto {
+  background: rgba(255, 255, 255, 0.1);
+  color: #ffffff;
+}
+
+.badge-thinking {
+  background: rgba(168, 85, 247, 0.2);
+  color: #c084fc;
+  border: 1px solid rgba(168, 85, 247, 0.3);
+}
+
+.badge-fast {
+  background: rgba(16, 185, 129, 0.2);
+  color: #34d399;
+  border: 1px solid rgba(16, 185, 129, 0.3);
+}
+
+.badge-pro {
+  background: rgba(59, 130, 246, 0.2);
+  color: #60a5fa;
+  border: 1px solid rgba(59, 130, 246, 0.3);
+}
+
+.badge-opus {
+  background: rgba(234, 179, 8, 0.2);
+  color: #fbbf24;
+  border: 1px solid rgba(234, 179, 8, 0.35);
+}
+
+.model-desc {
+  font-size: 11px;
+  color: var(--text-muted);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.dropdown-divider {
+  height: 1px;
+  background: rgba(255, 255, 255, 0.08);
+  margin: 6px 0;
+}
+
+.empty-dropdown-models {
+  padding: 12px;
+  text-align: center;
+  font-size: 12px;
+  color: var(--text-muted);
 }
 </style>

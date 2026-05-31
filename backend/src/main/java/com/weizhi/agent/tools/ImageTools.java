@@ -66,7 +66,10 @@ public class ImageTools {
 
             try (Response response = httpClient.newCall(httpRequest).execute()) {
                 if (!response.isSuccessful()) return "图片生成失败: " + response.message();
-                String body = response.body().string();
+                // [Fix] response.body() may be null even on a successful response (e.g. 204).
+                okhttp3.ResponseBody responseBody = response.body();
+                if (responseBody == null) return "API 返回为空（无 response body）";
+                String body = responseBody.string();
                 JsonNode root = objectMapper.readTree(body);
                 String base64 = root.at("/data/image_base64/0").asText();
 

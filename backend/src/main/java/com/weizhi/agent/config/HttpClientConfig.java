@@ -19,7 +19,8 @@ public class HttpClientConfig {
         okhttp3.OkHttpClient.Builder builder = new okhttp3.OkHttpClient.Builder()
                 .connectTimeout(10, TimeUnit.SECONDS)
                 .writeTimeout(60, TimeUnit.SECONDS)
-                .readTimeout(180, TimeUnit.SECONDS);
+                .readTimeout(180, TimeUnit.SECONDS)
+                .retryOnConnectionFailure(true);
 
         // Support HTTP/HTTPS proxy environment variables (very common in developer environments)
         String proxyEnv = System.getenv("HTTPS_PROXY");
@@ -51,8 +52,25 @@ public class HttpClientConfig {
                     host = rawUrl;
                     port = 80;
                 }
-                builder.proxy(new java.net.Proxy(java.net.Proxy.Type.HTTP, new java.net.InetSocketAddress(host, port)));
-                System.out.println("[OkHttpClient] Configured with environment proxy: " + host + ":" + port);
+                final String proxyHost = host;
+                final int proxyPort = port;
+                final java.net.Proxy appProxy = new java.net.Proxy(java.net.Proxy.Type.HTTP, new java.net.InetSocketAddress(proxyHost, proxyPort));
+                builder.proxySelector(new java.net.ProxySelector() {
+                    @Override
+                    public java.util.List<java.net.Proxy> select(java.net.URI uri) {
+                        String h = uri.getHost();
+                        if (h != null && (h.equalsIgnoreCase("localhost") || h.equals("127.0.0.1") || h.equals("::1"))) {
+                            return java.util.Collections.singletonList(java.net.Proxy.NO_PROXY);
+                        }
+                        return java.util.Collections.singletonList(appProxy);
+                    }
+
+                    @Override
+                    public void connectFailed(java.net.URI uri, java.net.SocketAddress sa, java.io.IOException ioe) {
+                        // ignore
+                    }
+                });
+                System.out.println("[OkHttpClient] Configured with environment proxy and bypass-local: " + host + ":" + port);
             } catch (Exception e) {
                 System.err.println("[OkHttpClient] Failed to parse proxy environment variable '" + proxyEnv + "': " + e.getMessage());
             }

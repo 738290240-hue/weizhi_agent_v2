@@ -23,6 +23,8 @@
     "translation": "翻譯工作台",
     "openaiSession": "OpenAI 會話",
     "openaiDesc": "綠色智能通道",
+    "geminiSession": "Gemini 會話",
+    "geminiDesc": "Gemini 智能通道",
     "dataManagement": "資料管理"
   },
   "theme": {
@@ -59,7 +61,8 @@
     "enterDeepseek": "進入 DeepSeek",
     "viewAssets": "檢視素材庫",
     "previewText": "你好，我是 Weizhi Agent。",
-    "enterOpenai": "進入 OpenAI"
+    "enterOpenai": "進入 OpenAI",
+    "enterGemini": "進入 Gemini"
   },
   "chat": {
     "unknown": "未知",
@@ -94,6 +97,15 @@
     "openaiEmptyDesc": "綠色通道：OpenAI / 中轉 API",
     "openaiDefaultName": "OpenAI 默認會話",
     "newOpenAIName": "新的 OpenAI 會話",
+    "geminiSubtitle": "Gemini 會話",
+    "geminiEmptyTitle": "Gemini 會話",
+    "geminiEmptyDesc": "紫色通道：連接 Gemini 會話服務，支持當前配置的模型",
+    "geminiDefaultName": "Gemini 默認會話",
+    "newGeminiName": "新的 Gemini 會話",
+    "geminiModeLabel": "Gemini 會話模式",
+    "geminiModeAuto": "自動",
+    "geminiModeText": "文字",
+    "geminiModeImage": "圖片",
     "stopGeneration": "停止生成",
     "qaAborted": "會話已停止。"
   },
@@ -180,7 +192,8 @@
     "desc": "集中檢視任務完成、失敗、設置保存和匯出反饋。",
     "markAllRead": "全部已讀",
     "clearAll": "清空通知",
-    "empty": "暫無通知"
+    "empty": "暫無通知",
+    "systemError": "系統未捕獲錯誤"
   },
   "settings": {
     "title": "模型設置",
@@ -195,7 +208,8 @@
     "saveSuccess": "模型設置已保存",
     "saveSuccessDesc": "設置已更新",
     "saveFailed": "設置保存失敗",
-    "saveOpenai": "保存 OpenAI 設置"
+    "saveOpenai": "保存 OpenAI 設置",
+    "saveGemini": "保存 Gemini 設置"
   },
   "logs": {
     "title": "日誌模塊",

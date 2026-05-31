@@ -1,101 +1,113 @@
-# Weizhi Agent
+# Weizhi Agent v2 🚀
 
-Weizhi Agent is a full-stack, AI-powered workspace designed to integrate multiple large language models and multi-modal tools into a unified, web-based interface. It serves as a powerful workbench for interacting with AI for conversational chat, image generation, and text-to-speech (TTS) synthesis.
+Weizhi Agent v2 is a state-of-the-art, full-stack, multi-agent AI workspace designed to integrate multiple leading large language models (LLMs) and advanced multi-modal tools into a unified, ultra-premium web-based interface. It serves as a comprehensive, intelligent cockpit for multi-turn conversational chat, smart model routing, real-time web search, document-based Retrieval-Augmented Generation (RAG), high-quality text-to-speech (TTS) synthesis, and image generation.
 
-The project is built with a modern tech stack, featuring a Spring Boot 3 backend and a Vue 3 frontend.
+The project is built with a modern tech stack, featuring a high-performance **Spring Boot 3** backend and a sleek, beautifully animated **Vue 3** frontend with a gorgeous glassmorphic/dark-mode theme.
 
-## ✨ Features
+---
 
-- **Dual AI Provider Support**: Seamlessly switch between **MiniMax** and **DeepSeek** for different tasks.
-- **Multi-modal Capabilities**:
-    - **Conversational Chat**: Engage in multi-turn conversations with context memory.
-    - **Text-to-Image Generation**: Create images from text prompts using the MiniMax model.
-    - **Text-to-Speech (TTS)**: Synthesize high-quality audio from text with a wide selection of voices.
-- **Unified Web Interface**: A clean, organized, and feature-rich workspace built with Vue 3 and Vite.
-- **History & Asset Management**: Browse, preview, and manage all your generated images and audio files.
-- **Dynamic Configuration**: Configure API keys and select models for each provider through the UI without restarting the application.
-- **System Diagnostics**: Monitor system health, API status, and task queues.
+## ✨ Features & Capabilities
 
-## 🛠️ Tech Stack
+- **Unified Multi-Provider Support**: Seamlessly orchestrate and switch between:
+  - **Gemini**: State-of-the-art multi-modal capabilities.
+  - **Claude**: Deep logical reasoning, advanced coding support, and flagship intelligence (Opus, Sonnet, Haiku).
+  - **OpenAI**: Universal reasoning and GPT-4 / o1 / o3 flagship models.
+  - **DeepSeek**: High-performance thinking, deep analysis, and R1 / V3 models.
+  - **MiniMax**: Professional image creation and state-of-the-art voice synthesis.
+- **AI-Powered Cockpit Tools**:
+  - **Smart Model Routing**: Auto-routing technology that selects the optimal model based on prompt complexity, coding requirements, or image creation needs.
+  - **Retrieval-Augmented Generation (RAG)**: Fully integrated local knowledge base. Upload documents (PDFs, Markdown, text), chunk them, store them in PostgreSQL, and ask questions with precise vector retrieval.
+  - **Real-time Web Search**: Integrated search tools allowing LLMs to search the web dynamically for up-to-date real-time intelligence.
+  - **Server-Sent Events (SSE) Streaming**: Real-time "typewriter" response streaming for ultra-fast, smooth interactive chats.
+  - **Text-to-Image Generation**: Create stunning visual assets directly from the conversation.
+  - **Text-to-Speech (TTS)**: Professional audio generation with granular controls (speed, pitch, volume, audio format) and voice library previewing.
+  - **AI Translation Workbench**: Dynamic, multi-lingual parallel translation desk integrating TTS speech synthesis.
+- **Cockpit Operations**:
+  - **Asset & File Library**: Structured repository of all generated images, voice clips, and documents.
+  - **System Diagnostics**: Real-time monitoring of backend health, API connectivity, active task queues, and storage status.
+  - **Robust Settings Console**: Dynamically configure API keys, update active base URLs, and inspect model latency & availability.
+
+---
+
+## 🛠️ Technology Stack
 
 - **Backend**:
-    - Java 21
-    - Spring Boot 3
-    - Spring AI
-    - Maven
+  - Java 21
+  - Spring Boot 3 & Spring AI
+  - Spring Security & WebFlux
+  - PostgreSQL (Vector RAG storage & session connectivity)
+  - OkHttp3 / Jackson
 - **Frontend**:
-    - Vue 3
-    - TypeScript
-    - Vite
+  - Vue 3 (Composition API)
+  - TypeScript
+  - Vite
+  - Vanilla CSS with premium glassmorphism, responsive CSS variables, and fluid transitions.
+
+---
 
 ## 🚀 Getting Started
 
-Follow these instructions to get the project up and running on your local machine.
+Follow these instructions to get the Weizhi Agent v2 cockpit up and running locally.
 
 ### Prerequisites
 
-- **JDK 21** or later.
-- **Node.js 20** or later.
-- **Maven** 3.6 or later.
+- **JDK 21** or later
+- **Node.js 20** or later
+- **PostgreSQL** 15+ (with `pgvector` extension for RAG support)
+- **Maven** 3.9+
 
-### 1. Backend Setup
+### 1. Database Configuration
 
-The backend server handles all the logic for communicating with the AI models and managing data.
+1. Create a PostgreSQL database named `weizhi_agent`.
+2. Ensure you have the `pgvector` extension installed or enabled on your database:
+   ```sql
+   CREATE EXTENSION IF NOT EXISTS vector;
+   ```
 
-1.  **Navigate to the backend directory**:
-    ```bash
-    cd backend
-    ```
+### 2. Backend Setup
 
-2.  **Configure API Keys**:
-    Create a `.env` file in the `backend` directory. You can copy the structure from your existing file. At a minimum, you need to provide the API keys for the services you intend to use:
+1. **Navigate to the backend directory**:
+   ```bash
+   cd backend
+   ```
+2. **Configure Environment Variables**:
+   Create a `.env` file in the `backend` directory:
+   ```dotenv
+   # .env
+   SPRING_DATASOURCE_URL=jdbc:postgresql://localhost:5432/weizhi_agent
+   SPRING_DATASOURCE_USERNAME=your_db_user
+   SPRING_DATASOURCE_PASSWORD=your_db_password
+   
+   MINIMAX_API_KEY=your_minimax_key
+   DEEPSEEK_API_KEY=your_deepseek_key
+   GEMINI_API_KEY=your_gemini_key
+   OPENAI_API_KEY=your_openai_key
+   ```
+3. **Run the backend application**:
+   ```bash
+   ./mvnw spring-boot:run
+   ```
+   The backend server will start on **`http://localhost:3017`**.
 
-    ```dotenv
-    # .env
-    MINIMAX_API_KEY=your_minimax_api_key_here
-    DEEPSEEK_API_KEY=your_deepseek_api_key_here
-    ```
+### 3. Frontend Setup
 
-3.  **Run the application**:
-    Use the Maven wrapper to start the Spring Boot application.
+1. **Navigate to the frontend directory**:
+   ```bash
+   cd frontend
+   ```
+2. **Install dependencies**:
+   ```bash
+   npm install
+   ```
+3. **Run the development server**:
+   ```bash
+   npm run dev
+   ```
+   The frontend dev server will launch at **`http://localhost:5173`**. Open it in your browser and experience the ultimate AI workspace!
 
-    ```bash
-    ./mvnw spring-boot:run
-    ```
-    The backend server will start on `http://localhost:3007`.
+---
 
-### 2. Frontend Setup
+## ⚙️ Configuration & Orchestration
 
-The frontend provides the web-based user interface for the agent.
-
-1.  **Navigate to the frontend directory**:
-    ```bash
-    cd frontend
-    ```
-
-2.  **Install dependencies**:
-    ```bash
-    npm install
-    ```
-
-3.  **Run the development server**:
-    ```bash
-    npm run dev
-    ```
-    The frontend development server will start, typically on `http://localhost:5173`. Open this URL in your browser to use the Weizhi Agent workspace.
-
-## ⚙️ Configuration
-
-- **API Keys**: The primary method for configuring API keys is the `.env` file in the `backend` directory. The application uses these keys to authenticate with the MiniMax and DeepSeek APIs.
-- **Models & Endpoints**: Most model IDs and API endpoints are configurable within the `backend/src/main/resources/application.yml` file. You can also adjust settings like server port and storage paths there.
-- **In-App Settings**: Some settings, like the currently active model for each provider, can be changed directly from the "Model Settings" page in the web UI.
-
-## 🗺️ Roadmap
-
-This project is actively evolving. Here are some of the planned features to enhance its capabilities as a true AI agent:
-
-- **True Function Calling**: Complete the refactoring to use Spring AI's native function calling, allowing the model to autonomously decide which tools (e.g., image generation, web search) to use.
-- **RAG & Knowledge Base**: Implement Retrieval-Augmented Generation (RAG) to allow users to upload documents (PDFs, Markdown) and have the agent answer questions based on their content.
-- **Web Search Tool**: Integrate a web search tool (e.g., Google Search, Tavily) to give the agent access to real-time information.
-- **Long-term Memory**: Develop a persistent memory system for the agent to remember key facts and user preferences across sessions.
-- **Real-time Streaming (SSE)**: Implement true Server-Sent Events for a "typewriter" effect in chat responses, improving user experience.
+- **Startup Probing**: On application startup, Weizhi Agent v2 automatically probes the configured Gemini/API endpoints to detect which models are accessible, fetching real-time latency and status codes to filter out unavailable models.
+- **Storage Directory**: All generated materials, audio clips, and uploaded RAG documents are organized inside the `backend/generated_documents/` and storage directories configured in `application.yml`.

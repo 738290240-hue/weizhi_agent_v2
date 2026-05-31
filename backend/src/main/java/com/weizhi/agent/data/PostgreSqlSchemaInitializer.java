@@ -109,6 +109,21 @@ public class PostgreSqlSchemaInitializer implements CommandLineRunner {
             // 1. Migrate settings
             if (isTableEmpty(conn, "weizhi_settings")) {
                 Map<String, Object> jsonSettings = jsonSettingsStore.readStored();
+                if (jsonSettings == null || jsonSettings.isEmpty() || !jsonSettings.containsKey("minimax")) {
+                    Path parentSettingsPath = Paths.get("../" + jsonSettingsStore.getSettingsFile()).toAbsolutePath().normalize();
+                    if (Files.exists(parentSettingsPath)) {
+                        log.info("Local settings empty or missing minimax key. Checking parent path: {}", parentSettingsPath);
+                        try {
+                            Map<String, Object> parentSettings = objectMapper.readValue(parentSettingsPath.toFile(), new TypeReference<Map<String, Object>>() {});
+                            if (parentSettings != null && !parentSettings.isEmpty() && parentSettings.containsKey("minimax")) {
+                                jsonSettings = parentSettings;
+                                log.info("Found valid minimax settings in parent path.");
+                            }
+                        } catch (Exception e) {
+                            log.warn("Failed to read parent settings: {}", e.getMessage());
+                        }
+                    }
+                }
                 if (jsonSettings != null && !jsonSettings.isEmpty()) {
                     log.info("Migrating configuration settings from local JSON to PostgreSQL...");
                     String sql = "INSERT INTO weizhi_settings (provider, api_key, model, base_url, updated_at) VALUES (?, ?, ?, ?, CURRENT_TIMESTAMP)";
@@ -141,6 +156,13 @@ public class PostgreSqlSchemaInitializer implements CommandLineRunner {
             // 2. Migrate image history
             if (isTableEmpty(conn, "weizhi_image_history")) {
                 Path path = Paths.get(storageProperties.getImageHistoryFile()).toAbsolutePath().normalize();
+                if (!Files.exists(path) || path.toFile().length() <= 2) {
+                    Path parentPath = Paths.get("../" + storageProperties.getImageHistoryFile()).toAbsolutePath().normalize();
+                    if (Files.exists(parentPath)) {
+                        path = parentPath;
+                        log.info("Using parent image history path for migration: {}", path);
+                    }
+                }
                 if (Files.exists(path)) {
                     log.info("Migrating image history from local JSON to PostgreSQL...");
                     List<Map<String, Object>> imageList = objectMapper.readValue(path.toFile(), new TypeReference<List<Map<String, Object>>>() {});
@@ -173,6 +195,13 @@ public class PostgreSqlSchemaInitializer implements CommandLineRunner {
             // 3. Migrate TTS history
             if (isTableEmpty(conn, "weizhi_tts_history")) {
                 Path path = Paths.get(storageProperties.getTtsHistoryFile()).toAbsolutePath().normalize();
+                if (!Files.exists(path) || path.toFile().length() <= 2) {
+                    Path parentPath = Paths.get("../" + storageProperties.getTtsHistoryFile()).toAbsolutePath().normalize();
+                    if (Files.exists(parentPath)) {
+                        path = parentPath;
+                        log.info("Using parent TTS history path for migration: {}", path);
+                    }
+                }
                 if (Files.exists(path)) {
                     log.info("Migrating TTS history from local JSON to PostgreSQL...");
                     List<Map<String, Object>> ttsList = objectMapper.readValue(path.toFile(), new TypeReference<List<Map<String, Object>>>() {});

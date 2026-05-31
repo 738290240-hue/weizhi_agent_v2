@@ -12,14 +12,17 @@
     "@vitest/ui": "^4.1.5",
     "@vue/test-utils": "^2.4.10",
     "axios": "^1.6.8",
+    "highlight.js": "^11.11.1",
     "jsdom": "^29.1.1",
     "lucide-vue-next": "^0.363.0",
+    "marked": "^18.0.4",
     "vitest": "^4.1.5",
     "vue": "^3.4.21",
     "vue-i18n": "^9.14.5",
     "vue-router": "^4.3.0"
   },
   "devDependencies": {
+    "@types/marked": "^5.0.2",
     "@types/node": "^20.12.7",
     "@vitejs/plugin-vue": "^5.0.4",
     "typescript": "^5.4.5",

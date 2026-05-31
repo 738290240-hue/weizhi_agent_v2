@@ -74,4 +74,38 @@ class MessageResolverTest {
         List<Map<String, String>> result = MessageResolver.resolve(body);
         assertEquals("system", result.get(0).get("role"));
     }
+
+    @Test
+    void resolve_messageFieldIsAppendedAfterHistory() {
+        Map<String, Object> body = Map.of(
+            "message", "生成一张小狗的照片",
+            "messages", List.of(
+                Map.of("role", "assistant", "content", "图片已生成: /api/images/files/old.jpg")
+            )
+        );
+
+        List<Map<String, String>> result = MessageResolver.resolve(body);
+
+        assertEquals(2, result.size());
+        assertEquals("assistant", result.get(0).get("role"));
+        assertEquals("图片已生成: /api/images/files/old.jpg", result.get(0).get("content"));
+        assertEquals("user", result.get(1).get("role"));
+        assertEquals("生成一张小狗的照片", result.get(1).get("content"));
+    }
+
+    @Test
+    void resolve_messageFieldDoesNotDuplicateSameLastUserMessage() {
+        Map<String, Object> body = Map.of(
+            "message", "生成一张小狗的照片",
+            "messages", List.of(
+                Map.of("role", "user", "content", "生成一张小狗的照片")
+            )
+        );
+
+        List<Map<String, String>> result = MessageResolver.resolve(body);
+
+        assertEquals(1, result.size());
+        assertEquals("user", result.get(0).get("role"));
+        assertEquals("生成一张小狗的照片", result.get(0).get("content"));
+    }
 }

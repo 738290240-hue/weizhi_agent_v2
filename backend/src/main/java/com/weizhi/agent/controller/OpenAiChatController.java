@@ -62,6 +62,8 @@ public class OpenAiChatController {
             return response;
         }
 
+        injectDateSnippetToLastUserMessage(messages);
+
         Map<String, Object> result = callOpenAi(messages);
         response.setText(String.valueOf(result.getOrDefault("text", "OpenAI 返回为空，请重试。")));
         response.setMedia(extractMedia(response.getText()));
@@ -85,10 +87,18 @@ public class OpenAiChatController {
             return emitter;
         }
 
+        injectDateSnippetToLastUserMessage(messages);
+
         java.util.concurrent.CompletableFuture.runAsync(() -> {
             try {
+                java.time.LocalDate now = java.time.LocalDate.now();
+                String formattedDate = now.format(java.time.format.DateTimeFormatter.ofPattern("yyyy年MM月dd日"));
+                String[] cnWeeks = {"", "星期一", "星期二", "星期三", "星期四", "星期五", "星期六", "星期日"};
+                String dayOfWeek = cnWeeks[now.getDayOfWeek().getValue()];
+                String dateSnippet = "\n\n[当前系统时效环境]\n- 当前日期：" + formattedDate + " (" + dayOfWeek + ")\n- 当前年份：2026年\n请始终基于此系统时效环境为用户解答日期与时序相关的问题。";
+
                 List<Map<String, String>> requestMessages = new ArrayList<>();
-                requestMessages.add(Map.of("role", "system", "content", "你运行在 Weizhi Agent 的 OpenAI 流式会话中。"));
+                requestMessages.add(Map.of("role", "system", "content", "你运行在 Weizhi Agent 的 OpenAI 流式会话中。" + dateSnippet));
                 requestMessages.addAll(messages);
 
                 Map<String, Object> payload = new LinkedHashMap<>();
@@ -150,10 +160,16 @@ public class OpenAiChatController {
             String model = settingsService.model("openai");
             String apiKey = settingsService.apiKey("openai");
             String baseUrl = settingsService.openAiBaseUrl();
+            java.time.LocalDate now = java.time.LocalDate.now();
+            String formattedDate = now.format(java.time.format.DateTimeFormatter.ofPattern("yyyy年MM月dd日"));
+            String[] cnWeeks = {"", "星期一", "星期二", "星期三", "星期四", "星期五", "星期六", "星期日"};
+            String dayOfWeek = cnWeeks[now.getDayOfWeek().getValue()];
+            String dateSnippet = "\n\n[当前系统时效环境]\n- 当前日期：" + formattedDate + " (" + dayOfWeek + ")\n- 当前年份：2026年\n请始终基于此系统时效环境为用户解答日期与时序相关的问题。";
+
             List<Map<String, String>> requestMessages = new ArrayList<>();
             requestMessages.add(Map.of(
                     "role", "system",
-                    "content", "你运行在 Weizhi Agent 的 OpenAI 专属会话中。当前配置的模型是 " + model + "。"
+                    "content", "你运行在 Weizhi Agent 的 OpenAI 专属会话中。当前配置的模型是 " + model + "。" + dateSnippet
             ));
             requestMessages.addAll(messages);
 
@@ -333,11 +349,14 @@ public class OpenAiChatController {
                     .build();
 
             try (Response response = httpClient.newCall(httpRequest).execute()) {
-                if (!response.isSuccessful() || response.body() == null) {
-                    log.error("OpenAI image generation failed: {}", response.body() != null ? response.body().string() : "Empty body");
+                // [Fix] Read body exactly once. response.body() is a one-shot stream;
+                // calling .string() a second time returns empty and may cause NPE or JSON parse failure.
+                okhttp3.ResponseBody responseBody = response.body();
+                String raw = responseBody != null ? responseBody.string() : "";
+                if (!response.isSuccessful() || responseBody == null) {
+                    log.error("OpenAI image generation failed: HTTP {} - {}", response.code(), raw);
                     return null;
                 }
-                String raw = response.body().string();
                 JsonNode root = objectMapper.readTree(raw);
                 String base64 = root.at("/data/0/b64_json").asText();
                 if (base64 == null || base64.isEmpty()) return null;
@@ -353,6 +372,24 @@ public class OpenAiChatController {
         } catch (Exception e) {
             log.warn("generateOpenAiImageFromPrompt failed for prompt '{}': {}", prompt, e.getMessage(), e);
             return null;
+        }
+    }
+
+    private void injectDateSnippetToLastUserMessage(List<Map<String, String>> messages) {
+        for (int i = messages.size() - 1; i >= 0; i--) {
+            Map<String, String> msg = messages.get(i);
+            if ("user".equals(msg.get("role"))) {
+                java.time.LocalDate now = java.time.LocalDate.now();
+                String formattedDate = now.format(java.time.format.DateTimeFormatter.ofPattern("yyyy年MM月dd日"));
+                String[] cnWeeks = {"", "星期一", "星期二", "星期三", "星期四", "星期五", "星期六", "星期日"};
+                String dayOfWeek = cnWeeks[now.getDayOfWeek().getValue()];
+                String dateSnippet = "[当前系统时效环境]\n- 当前日期：" + formattedDate + " (" + dayOfWeek + ")\n- 当前年份：2026年\n请始终基于此系统时效环境为用户解答日期与时序相关的问题。\n\n";
+
+                Map<String, String> mutableMsg = new HashMap<>(msg);
+                mutableMsg.put("content", dateSnippet + msg.get("content"));
+                messages.set(i, mutableMsg);
+                break;
+            }
         }
     }
 }

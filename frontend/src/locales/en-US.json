@@ -23,6 +23,8 @@
     "translation": "Translation",
     "openaiSession": "OpenAI Session",
     "openaiDesc": "Green AI Channel",
+    "geminiSession": "Gemini Session",
+    "geminiDesc": "Gemini AI Channel",
     "dataManagement": "Data Management"
   },
   "theme": {
@@ -59,7 +61,8 @@
     "enterDeepseek": "Enter DeepSeek",
     "viewAssets": "View Assets",
     "previewText": "Hello, I am Weizhi Agent.",
-    "enterOpenai": "Enter OpenAI"
+    "enterOpenai": "Enter OpenAI",
+    "enterGemini": "Enter Gemini"
   },
   "chat": {
     "unknown": "Unknown",
@@ -94,6 +97,15 @@
     "openaiEmptyDesc": "Green Channel: OpenAI / Proxy API",
     "openaiDefaultName": "OpenAI Default Session",
     "newOpenAIName": "New OpenAI Session",
+    "geminiSubtitle": "Gemini Session",
+    "geminiEmptyTitle": "Gemini Session",
+    "geminiEmptyDesc": "Purple Channel: Gemini session service with the configured model",
+    "geminiDefaultName": "Gemini Default Session",
+    "newGeminiName": "New Gemini Session",
+    "geminiModeLabel": "Gemini Session Mode",
+    "geminiModeAuto": "Auto",
+    "geminiModeText": "Text",
+    "geminiModeImage": "Image",
     "stopGeneration": "Stop Generation",
     "qaAborted": "Session stopped."
   },
@@ -180,7 +192,8 @@
     "desc": "View task results, settings and exports feedback.",
     "markAllRead": "Mark All Read",
     "clearAll": "Clear All",
-    "empty": "No notifications"
+    "empty": "No notifications",
+    "systemError": "Unhandled System Error"
   },
   "settings": {
     "title": "Model Settings",
@@ -195,7 +208,8 @@
     "saveSuccess": "Settings Saved",
     "saveSuccessDesc": "Settings updated",
     "saveFailed": "Settings Save Failed",
-    "saveOpenai": "Save OpenAI Settings"
+    "saveOpenai": "Save OpenAI Settings",
+    "saveGemini": "Save Gemini Settings"
   },
   "logs": {
     "title": "Logs",

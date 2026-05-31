@@ -46,6 +46,13 @@ const appState = inject<any>('appState');
           <small>{{ $t('nav.openaiDesc') }}</small>
         </span>
       </button>
+      <button class="nav-item provider-entry gemini-entry" :class="{ active: appState.activeProvider.value === 'gemini' }" @click="appState.switchProvider('gemini')">
+        <Terminal :size="16" />
+        <span>
+          <strong>{{ $t('nav.geminiSession') }}</strong>
+          <small>{{ $t('nav.geminiDesc') }}</small>
+        </span>
+      </button>
       <button class="nav-item" :class="{ active: appState.activeView.value === 'sessions' }" @click="appState.activeView.value = 'sessions'"><History :size="16" /> {{ $t('nav.sessions') }}</button>
       <button class="nav-item" :class="{ active: appState.activeView.value === 'tasks' }" @click="appState.activeView.value = 'tasks'"><Activity :size="16" /> {{ $t('nav.tasks') }}</button>
       <button class="nav-item" :class="{ active: appState.activeView.value === 'notifications' }" @click="appState.activeView.value = 'notifications'; appState.markNotificationsRead()">

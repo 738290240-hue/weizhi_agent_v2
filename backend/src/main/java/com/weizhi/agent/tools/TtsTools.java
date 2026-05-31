@@ -94,7 +94,10 @@ public class TtsTools {
 
             try (Response response = httpClient.newCall(httpRequest).execute()) {
                 if (!response.isSuccessful()) return "语音生成失败: " + response.message();
-                String raw = response.body().string();
+                // [Fix] response.body() may be null even on a successful response (e.g. 204).
+                okhttp3.ResponseBody responseBody = response.body();
+                if (responseBody == null) return "API 返回为空（无 response body）";
+                String raw = responseBody.string();
                 JsonNode root = objectMapper.readTree(raw);
                 String hexAudio = root.at("/data/audio").asText();
                 if (hexAudio == null || hexAudio.isEmpty()) return "API 未返回有效语音数据。";

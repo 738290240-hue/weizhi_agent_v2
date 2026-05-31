@@ -1,5 +1,6 @@
 package com.weizhi.agent.controller;
 
+import com.weizhi.agent.service.ImageRequestDetector;
 import org.junit.jupiter.api.Test;
 
 import java.util.Map;
@@ -25,13 +26,7 @@ class ChatControllerTest {
         String imagePrompt = "生成一张图片，风景";
         String regularPrompt = "你好，请问今天天气怎么样";
         // Logic extracted to be testable without Spring context
-        assertTrue(looksLikeImageRequest(imagePrompt));
-        assertFalse(looksLikeImageRequest(regularPrompt));
-    }
-
-    private boolean looksLikeImageRequest(String input) {
-        String s = input.toLowerCase();
-        return (s.contains("生成") || s.contains("画") || s.contains("创建"))
-                && (s.contains("图片") || s.contains("图像") || s.contains("照片") || s.contains("image"));
+        assertTrue(ImageRequestDetector.looksLikeImageRequest(imagePrompt));
+        assertFalse(ImageRequestDetector.looksLikeImageRequest(regularPrompt));
     }
 }

@@ -49,13 +49,19 @@ public class FileUtils {
      * @throws IOException 如果目录创建失败或文件写入失败
      */
     public static String saveFile(byte[] content, String filename, String basePath) throws IOException {
-        Path directory = Paths.get(basePath).toAbsolutePath();
+        Path directory = Paths.get(basePath).toAbsolutePath().normalize();
         if (!Files.exists(directory)) {
             Files.createDirectories(directory);
             log.info("Created directory: {}", directory);
         }
 
-        Path filePath = directory.resolve(filename);
+        // [Security] Prevent path traversal: ensure the resolved path stays within basePath.
+        Path filePath = directory.resolve(filename).normalize();
+        if (!filePath.startsWith(directory)) {
+            throw new SecurityException("Path traversal attempt blocked. filename=" + filename
+                    + " resolves outside basePath=" + directory);
+        }
+
         Files.write(filePath, content);
         log.info("Saved file: {}", filePath);
         return filePath.toString();
@@ -86,12 +92,17 @@ public class FileUtils {
      * @return 建议的扩展名（不带点，如 "png", "jpg"），识别失败返回 "bin"
      */
     public static String detectImageExtension(byte[] data) {
+        // Require at least 3 bytes for JPEG check
         if (data == null || data.length < 3) return "bin";
 
         // JPEG: FF D8 FF
         if (data[0] == (byte) 0xFF && data[1] == (byte) 0xD8 && data[2] == (byte) 0xFF) {
             return "jpg";
         }
+
+        // Require at least 4 bytes for PNG/GIF/WebP checks
+        if (data.length < 4) return "bin";
+
         // PNG: 89 50 4E 47
         if (data[0] == (byte) 0x89 && data[1] == (byte) 0x50 && data[2] == (byte) 0x4E && data[3] == (byte) 0x47) {
             return "png";

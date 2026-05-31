@@ -14,4 +14,6 @@ public class StorageProperties {
     private String imageDir = "generated_images";
     private String imageHistoryFile = "data/image-history.json";
     private String ttsHistoryFile = "data/tts-history.json";
+    private String documentDir = "generated_documents";
+    private String documentIndexFile = "data/document-index.json";
 }

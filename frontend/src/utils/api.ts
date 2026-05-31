@@ -21,13 +21,22 @@ export const systemApi = {
     },
     logs: (params?: { level?: string; query?: string; limit?: number }) => api.get('/system/logs/history', { params }),
     clearLogs: () => api.delete('/system/logs'),
-    getHealth: () => api.get('/system/health')
+    getHealth: () => api.get('/system/health'),
+    upload: (file: File) => {
+        const formData = new FormData();
+        formData.append('file', file);
+        return api.post('/upload', formData, {
+            headers: {
+                'Content-Type': 'multipart/form-data'
+            }
+        });
+    }
 };
 
 export const settingsApi = {
     get: () => api.get('/settings'),
-    models: (provider: 'minimax' | 'deepseek' | 'openai') => api.get(`/settings/${provider}/models`),
-    update: (provider: 'minimax' | 'deepseek' | 'openai', payload: { apiKey?: string; model?: string; baseUrl?: string }) => api.post(`/settings/${provider}`, payload)
+    models: (provider: 'minimax' | 'deepseek' | 'openai' | 'gemini') => api.get(`/settings/${provider}/models`),
+    update: (provider: 'minimax' | 'deepseek' | 'openai' | 'gemini', payload: { apiKey?: string; model?: string; baseUrl?: string }) => api.post(`/settings/${provider}`, payload)
 };
 
 export const chatApi = {
@@ -54,6 +63,13 @@ export const deepSeekApi = {
 export const openaiApi = {
     ask: (message: string, messages: ProviderMessage[], options?: any) => api.post('/openai/chat/ask', { message, messages }, options),
     streamUrl: () => resolveApiUrl('/api/openai/chat/stream')
+};
+
+export const geminiApi = {
+    ask: (message: string, messages: ProviderMessage[], mode = 'auto', documentIds?: string[], model?: string, options?: any) => api.post('/gemini/chat/ask', { message, messages, mode, documentIds, model }, options),
+    streamUrl: () => resolveApiUrl('/api/gemini/chat/stream'),
+    capabilities: () => api.get('/gemini/models/capabilities'),
+    probe: () => api.post('/gemini/models/probe')
 };
 
 export const imageApi = {
@@ -117,3 +133,32 @@ export const dataManagementApi = {
     switchMode: (mode: DataSourceMode) => api.post('/data-management/mode', { mode }),
     testConnection: (mode: DataSourceMode) => api.post('/data-management/test-connection', { mode })
 };
+
+export type DocumentRecord = {
+    id: string;
+    name: string;
+    filename: string;
+    type: string;
+    sizeBytes: number;
+    uploadTime: number;
+    url: string;
+    chunks?: any[];
+};
+
+export const documentApi = {
+    list: () => api.get<DocumentRecord[]>('/documents'),
+    delete: (id: string) => api.delete(`/documents/${id}`),
+    upload: (file: File, name?: string) => {
+        const formData = new FormData();
+        formData.append('file', file);
+        if (name) {
+            formData.append('name', name);
+        }
+        return api.post('/documents/upload', formData, {
+            headers: {
+                'Content-Type': 'multipart/form-data'
+            }
+        });
+    }
+};
+

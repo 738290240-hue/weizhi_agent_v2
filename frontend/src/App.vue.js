@@ -2,13 +2,15 @@
 // i18n refactor completed
 import { computed, ref, onMounted, onBeforeUnmount, nextTick, provide, watch } from "vue";
 import { useI18n } from "vue-i18n";
+import { marked } from "marked";
+import hljs from "highlight.js";
 import AppBackground from './components/layout/AppBackground.vue';
 import FloatingSidebar from './components/layout/FloatingSidebar.vue';
 import FloatingMainPanel from './components/layout/FloatingMainPanel.vue';
 import TranslationView from './components/chat/TranslationView.vue';
-import { systemApi, settingsApi, chatApi, deepSeekApi, openaiApi, imageApi, ttsApi, dataManagementApi } from "./utils/api";
+import { systemApi, settingsApi, chatApi, deepSeekApi, openaiApi, geminiApi, imageApi, ttsApi, dataManagementApi, documentApi } from "./utils/api";
 import { resolveApiUrl } from "./utils/urlUtils";
-import { Terminal, Send, Trash2, Cpu, Volume2, RefreshCw, Activity, Star, Download, X, ChevronDown, ChevronUp, Square, Copy, Check } from "lucide-vue-next";
+import { Terminal, Send, Trash2, Cpu, Image as ImageIcon, Volume2, FileText, RefreshCw, BookOpen, Activity, FolderOpen, Star, Download, X, ChevronDown, ChevronUp, Square, Copy, Check } from "lucide-vue-next";
 const logs = ref([]);
 const logEntries = ref([]);
 const logLevel = ref("");
@@ -31,11 +33,240 @@ const activeView = ref("home");
 const minimaxMessages = ref([]);
 const deepSeekMessages = ref([]);
 const openaiMessages = ref([]);
+const geminiMessages = ref([]);
 const chatSessions = ref([]);
-const activeSessionIds = ref({ minimax: "", deepseek: "", openai: "" });
+const activeSessionIds = ref({ minimax: "", deepseek: "", openai: "", gemini: "" });
 const taskQueue = ref([]);
 const notifications = ref([]);
 const inputText = ref("");
+const geminiMode = ref("auto");
+const selectedGeminiModel = ref("auto");
+const showModelDropdown = ref(false);
+const selectModel = (modelId) => {
+    selectedGeminiModel.value = modelId;
+    showModelDropdown.value = false;
+};
+const closeModelDropdown = () => {
+    showModelDropdown.value = false;
+};
+const formatModelInfo = (id) => {
+    const lowercaseId = id.toLowerCase();
+    let displayName = id;
+    let badgeText = "Pro";
+    let badgeClass = "badge-pro";
+    let description = "通用大语言模型";
+    // ── Claude ──────────────────────────────────────────────────────
+    if (lowercaseId.includes("claude-opus-4") || lowercaseId.includes("claude-4-opus")) {
+        displayName = "Claude Opus 4";
+        badgeText = "Opus";
+        badgeClass = "badge-thinking";
+        description = "顶级推理 / 复杂任务旗舰";
+    }
+    else if (lowercaseId.includes("claude-opus")) {
+        displayName = "Claude Opus";
+        badgeText = "Opus";
+        badgeClass = "badge-thinking";
+        description = "高阶逻辑 / 复杂推理";
+    }
+    else if (lowercaseId.includes("claude-sonnet-4") || lowercaseId.includes("claude-4-sonnet")
+        || lowercaseId.includes("claude-3-5-sonnet-20241022")) {
+        displayName = "Claude Sonnet 4";
+        badgeText = "Sonnet";
+        badgeClass = "badge-thinking";
+        description = "高阶逻辑 / 复杂编程";
+    }
+    else if (lowercaseId.includes("claude-3-5-sonnet-20240620") || lowercaseId.includes("claude-sonnet-3")) {
+        displayName = "Claude Sonnet 3.5";
+        badgeText = "Sonnet";
+        badgeClass = "badge-thinking";
+        description = "复杂逻辑与推理";
+    }
+    else if (lowercaseId.includes("claude-sonnet")) {
+        displayName = "Claude Sonnet";
+        badgeText = "Sonnet";
+        badgeClass = "badge-thinking";
+        description = "高阶逻辑 / 复杂推理";
+    }
+    else if (lowercaseId.includes("claude-haiku-4") || lowercaseId.includes("claude-4-haiku")) {
+        displayName = "Claude Haiku 4";
+        badgeText = "Fast";
+        badgeClass = "badge-fast";
+        description = "极速日常问答 (新版)";
+    }
+    else if (lowercaseId.includes("claude-3-5-haiku") || lowercaseId.includes("claude-haiku-3")) {
+        displayName = "Claude Haiku 3.5";
+        badgeText = "Fast";
+        badgeClass = "badge-fast";
+        description = "极速日常问答";
+    }
+    else if (lowercaseId.includes("claude-haiku")) {
+        displayName = "Claude Haiku";
+        badgeText = "Fast";
+        badgeClass = "badge-fast";
+        description = "极速日常问答";
+    }
+    else if (lowercaseId.includes("claude-3-7")) {
+        displayName = "Claude 3.7";
+        badgeText = "Pro";
+        badgeClass = "badge-pro";
+        description = "高阶综合推理";
+    }
+    else if (lowercaseId.includes("claude-3-opus")) {
+        displayName = "Claude 3 Opus";
+        badgeText = "Opus";
+        badgeClass = "badge-opus";
+        description = "高阶推理 / 复杂分析";
+    }
+    else if (lowercaseId.includes("claude-3-haiku")) {
+        displayName = "Claude 3 Haiku";
+        badgeText = "Fast";
+        badgeClass = "badge-fast";
+        description = "经典极速问答";
+    }
+    else if (lowercaseId.includes("claude-3-sonnet")) {
+        displayName = "Claude 3 Sonnet";
+        badgeText = "Sonnet";
+        badgeClass = "badge-thinking";
+        description = "经典综合推理";
+        // ── DeepSeek ──────────────────────────────────────────────────────
+    }
+    else if (lowercaseId.includes("deepseek-reasoner") || lowercaseId.includes("deepseek-r1")) {
+        displayName = "DeepSeek R1";
+        badgeText = "Thinking";
+        badgeClass = "badge-thinking";
+        description = "深度思考与长链推理";
+    }
+    else if (lowercaseId.includes("deepseek-chat") || lowercaseId.includes("deepseek-v3")) {
+        displayName = "DeepSeek V3 / Chat";
+        badgeText = "Pro";
+        badgeClass = "badge-pro";
+        description = "极高性价比综合分析";
+        // ── GPT / OpenAI ──────────────────────────────────────────────────
+    }
+    else if (lowercaseId.includes("o1-mini") || lowercaseId === "o1-mini") {
+        displayName = "GPT o1 Mini";
+        badgeText = "Think";
+        badgeClass = "badge-thinking";
+        description = "轻量推理模型";
+    }
+    else if (lowercaseId.startsWith("o1") || lowercaseId === "o1") {
+        displayName = "GPT o1";
+        badgeText = "Think";
+        badgeClass = "badge-thinking";
+        description = "深度推理旗舰";
+    }
+    else if (lowercaseId.startsWith("o3-mini") || lowercaseId === "o3-mini") {
+        displayName = "GPT o3 Mini";
+        badgeText = "Think";
+        badgeClass = "badge-thinking";
+        description = "高效推理模型";
+    }
+    else if (lowercaseId.startsWith("o3") || lowercaseId === "o3") {
+        displayName = "GPT o3";
+        badgeText = "Think";
+        badgeClass = "badge-thinking";
+        description = "高阶推理旗舰";
+    }
+    else if (lowercaseId.startsWith("o4-mini")) {
+        displayName = "GPT o4 Mini";
+        badgeText = "Think";
+        badgeClass = "badge-thinking";
+        description = "新一代轻量推理";
+    }
+    else if (lowercaseId.startsWith("o4")) {
+        displayName = "GPT o4";
+        badgeText = "Think";
+        badgeClass = "badge-thinking";
+        description = "新一代旗舰推理";
+    }
+    else if (lowercaseId.includes("gpt-4o-mini")) {
+        displayName = "GPT-4o Mini";
+        badgeText = "Fast";
+        badgeClass = "badge-fast";
+        description = "高性价比极速文本响应";
+    }
+    else if (lowercaseId.includes("gpt-4o")) {
+        displayName = "GPT-4o";
+        badgeText = "Pro";
+        badgeClass = "badge-pro";
+        description = "强力多模态 / 综合问答";
+    }
+    else if (lowercaseId.includes("gpt-4.1-mini")) {
+        displayName = "GPT-4.1 Mini";
+        badgeText = "Fast";
+        badgeClass = "badge-fast";
+        description = "高性价比新版";
+    }
+    else if (lowercaseId.includes("gpt-4.1")) {
+        displayName = "GPT-4.1";
+        badgeText = "Pro";
+        badgeClass = "badge-pro";
+        description = "新版综合旗舰";
+    }
+    else if (lowercaseId.includes("gpt-4-turbo")) {
+        displayName = "GPT-4 Turbo";
+        badgeText = "Pro";
+        badgeClass = "badge-pro";
+        description = "强力综合推理";
+    }
+    else if (lowercaseId.includes("gpt-4")) {
+        displayName = "GPT-4";
+        badgeText = "Pro";
+        badgeClass = "badge-pro";
+        description = "经典强力模型";
+    }
+    else if (lowercaseId.includes("gpt-3.5")) {
+        displayName = "GPT-3.5";
+        badgeText = "Fast";
+        badgeClass = "badge-fast";
+        description = "高性价比快速响应";
+        // ── Gemini ──────────────────────────────────────────────────────
+    }
+    else if (lowercaseId.includes("gemini-3.1-pro-high") || lowercaseId.includes("gemini-3-pro") || lowercaseId.includes("gemini-1.5-pro")) {
+        displayName = "Gemini Pro";
+        badgeText = "Pro";
+        badgeClass = "badge-pro";
+        description = "大容量多模态分析";
+    }
+    else if (lowercaseId.includes("gemini-2.5-pro") || lowercaseId.includes("gemini-2.5")) {
+        displayName = "Gemini 2.5 Pro";
+        badgeText = "Pro";
+        badgeClass = "badge-pro";
+        description = "新一代多模态旗舰";
+    }
+    else if (lowercaseId.includes("gemini-2.0")) {
+        displayName = "Gemini 2.0";
+        badgeText = "Pro";
+        badgeClass = "badge-pro";
+        description = "多模态推理";
+    }
+    else if (lowercaseId.includes("gemini-3-flash") || lowercaseId.includes("gemini-1.5-flash")) {
+        displayName = "Gemini Flash";
+        badgeText = "Fast";
+        badgeClass = "badge-fast";
+        description = "日常多模态极速问答";
+    }
+    else if (lowercaseId.includes("gemini-2.5-flash")) {
+        displayName = "Gemini 2.5 Flash";
+        badgeText = "Fast";
+        badgeClass = "badge-fast";
+        description = "新一代极速多模态";
+    }
+    else {
+        // Generic fallback: format ID as readable name
+        // e.g. "gpt-oss-120b-medium" → "Gpt Oss 120b"
+        displayName = id
+            .replace(/[-_]/g, ' ')
+            .split(' ')
+            .slice(0, 3) // take first 3 words max
+            .map((w) => w.charAt(0).toUpperCase() + w.slice(1))
+            .join(' ');
+        badgeText = "AI";
+        badgeClass = "badge-pro";
+        description = "中转自定义模型";
+    }
+    return { displayName, badgeText, badgeClass, description };
+};
 const isThinking = ref(false);
 const chatAbortController = ref(null);
 const copiedIndex = ref(null);
@@ -43,6 +274,70 @@ const chatContainer = ref(null);
 const expandedThinks = ref({});
 const toggleThink = (key) => {
     expandedThinks.value[key] = !expandedThinks.value[key];
+};
+// Custom renderer to add copy buttons and language headers to code blocks!
+const markedRenderer = new marked.Renderer();
+markedRenderer.code = (arg1, arg2) => {
+    let text = "";
+    let lang = "";
+    if (typeof arg1 === "object" && arg1 !== null) {
+        text = arg1.text || "";
+        lang = arg1.lang || "";
+    }
+    else {
+        text = String(arg1 || "");
+        lang = String(arg2 || "");
+    }
+    const language = lang || "plaintext";
+    const validLanguage = hljs.getLanguage(language) ? language : "plaintext";
+    const highlighted = hljs.highlight(text, { language: validLanguage }).value;
+    return `
+    <div class="code-block-wrapper">
+      <div class="code-block-header">
+        <span class="code-lang">${validLanguage}</span>
+        <button class="code-copy-btn" onclick="window.weizhiCopyCode(this)">
+          <svg class="copy-icon" viewBox="0 0 24 24" width="14" height="14" stroke="currentColor" stroke-width="2.5" fill="none" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>
+          <span class="copy-text">复制</span>
+        </button>
+      </div>
+      <pre class="hljs"><code class="language-${validLanguage}">${highlighted}</code></pre>
+    </div>
+  `;
+};
+// Set options
+marked.setOptions({
+    renderer: markedRenderer,
+    gfm: true,
+    breaks: true
+});
+// Register code copy handler globally
+window.weizhiCopyCode = (btn) => {
+    const pre = btn.parentElement?.nextElementSibling;
+    if (!pre)
+        return;
+    const code = pre.querySelector("code")?.innerText || "";
+    navigator.clipboard.writeText(code).then(() => {
+        const textSpan = btn.querySelector(".copy-text");
+        if (textSpan)
+            textSpan.textContent = "已复制";
+        btn.classList.add("copied");
+        setTimeout(() => {
+            if (textSpan)
+                textSpan.textContent = "复制";
+            btn.classList.remove("copied");
+        }, 2000);
+    });
+};
+const renderMarkdown = (text) => {
+    if (!text)
+        return "";
+    try {
+        return marked.parse(text);
+    }
+    catch (err) {
+        console.error("Failed to parse markdown:", err);
+        return text;
+    }
 };
 const parseMessageContent = (content) => {
     if (!content)
@@ -86,6 +381,8 @@ const parseMessageContent = (content) => {
 };
 const imageHistories = ref([]);
 const ttsHistories = ref([]);
+const documents = ref([]);
+const selectedDocIds = ref([]);
 const voices = ref([]);
 const activeVoiceTab = ref("中文男声");
 const isChineseFemale = (v) => {
@@ -157,6 +454,11 @@ const deepSeekUsage = ref(null);
 const accountLoading = ref(false);
 const settingsLoading = ref(false);
 const settingsState = ref({});
+const geminiCapabilities = ref(null);
+const geminiProbeLoading = ref(false);
+const uploadedFiles = ref([]);
+const fileInput = ref(null);
+const isUploading = ref(false);
 const dataManagementStatus = ref(null);
 const dataManagementLoading = ref(false);
 const selectedDataMode = ref("json");
@@ -173,9 +475,24 @@ const postgresqlInfo = computed(() => dataManagementStatus.value?.postgresql || 
 const settingsDraft = ref({
     minimax: { apiKey: "", model: "" },
     deepseek: { apiKey: "", model: "" },
-    openai: { apiKey: "", baseUrl: "", model: "" }
+    openai: { apiKey: "", baseUrl: "", model: "" },
+    gemini: { apiKey: "", baseUrl: "", model: "" }
 });
 const sidebarWidth = ref(248);
+const chatInputHeight = ref(null);
+const textareaRef = ref(null);
+const adjustTextareaHeight = () => {
+    if (chatInputHeight.value)
+        return; // If manually resized, don't override with auto-grow
+    nextTick(() => {
+        const el = textareaRef.value;
+        if (el) {
+            el.style.height = "auto";
+            el.style.height = `${el.scrollHeight}px`;
+        }
+    });
+};
+watch(inputText, adjustTextareaHeight);
 const systemHealth = ref(t("chat.unknown"));
 const promptTemplates = ref([
     { id: "image-detail", title: t("prompt.imageDetailTitle"), provider: "MiniMax", content: t("prompt.imageDetailContent") },
@@ -212,13 +529,67 @@ const providerMeta = {
         subtitle: t("chat.openaiSubtitle"),
         emptyTitle: t("chat.openaiEmptyTitle"),
         emptyDesc: t("chat.openaiEmptyDesc")
+    },
+    gemini: {
+        label: "Gemini",
+        subtitle: t("chat.geminiSubtitle"),
+        accent: "purple",
+        emptyTitle: t("chat.geminiEmptyTitle"),
+        emptyDesc: t("chat.geminiEmptyDesc")
     }
 };
-const messages = computed(() => activeProvider.value === "minimax" ? minimaxMessages.value : activeProvider.value === "deepseek" ? deepSeekMessages.value : openaiMessages.value);
+const messages = computed(() => {
+    if (activeProvider.value === "minimax")
+        return minimaxMessages.value;
+    if (activeProvider.value === "deepseek")
+        return deepSeekMessages.value;
+    if (activeProvider.value === "openai")
+        return openaiMessages.value;
+    return geminiMessages.value;
+});
 const activeMeta = computed(() => providerMeta[activeProvider.value]);
 const minimaxModels = computed(() => settingsState.value?.minimax?.models || []);
 const deepSeekModels = computed(() => settingsState.value?.deepseek?.models || []);
 const openaiModels = computed(() => settingsState.value?.openai?.models || []);
+const geminiModels = computed(() => settingsState.value?.gemini?.models || []);
+const availableGeminiModels = computed(() => {
+    if (!geminiCapabilities.value || !geminiCapabilities.value.models) {
+        return settingsState.value?.gemini?.models || [];
+    }
+    // Filter to only available, non-thinking, non-image models
+    const available = geminiCapabilities.value.models.filter((m) => {
+        if (!m.available)
+            return false;
+        const lower = m.id.toLowerCase();
+        // Exclude pure thinking variants (they are same model, just different mode)
+        if (lower.endsWith('-thinking'))
+            return false;
+        // Exclude image models from text chat selector
+        if (lower.includes('image'))
+            return false;
+        return true;
+    });
+    // Deduplicate by displayName: keep the shortest (cleanest) model ID per name
+    const seen = new Map();
+    for (const m of available) {
+        const name = formatModelInfo(m.id).displayName;
+        if (!seen.has(name)) {
+            seen.set(name, m);
+        }
+        else {
+            // Prefer shorter (simpler) ID
+            if (m.id.length < seen.get(name).id.length) {
+                seen.set(name, m);
+            }
+        }
+    }
+    return Array.from(seen.values());
+});
+const isGeminiImageAvailable = computed(() => {
+    if (!geminiCapabilities.value || !geminiCapabilities.value.models)
+        return false;
+    return geminiCapabilities.value.models.some((m) => m.available && (m.id.includes("image") || m.id === "gemini-3-pro-image"));
+});
 const minimaxSubViews = ["speech", "translation", "imageHistory", "ttsHistory"];
 const showMiniMaxSubnav = computed(() => activeProvider.value === "minimax" && (activeView.value === "chat" || minimaxSubViews.includes(activeView.value)));
 const providerSessions = computed(() => chatSessions.value.filter(session => session.provider === activeProvider.value));
@@ -270,6 +641,13 @@ const assetItems = computed(() => [
         title: item.text || t("history.defaultTtsText"),
         subtitle: `${item.voiceId || "voice"} · ${item.format || "audio"} · tts`,
         url: String(item.audioUrl || "")
+    })),
+    ...documents.value.map(item => ({
+        id: String(item.id),
+        type: "document",
+        title: item.name,
+        subtitle: `${item.type.toUpperCase()} · ${(item.sizeBytes / 1024).toFixed(1)} KB · ${(item.chunks?.length) || 0} 分片`,
+        url: String(item.url || "")
     }))
 ]);
 const filteredAssetItems = computed(() => {
@@ -278,6 +656,9 @@ const filteredAssetItems = computed(() => {
     }
     if (activeAssetTab.value === 'audio') {
         return assetItems.value.filter(item => item.type === 'audio');
+    }
+    if (activeAssetTab.value === 'document') {
+        return assetItems.value.filter(item => item.type === 'document');
     }
     return assetItems.value;
 });
@@ -390,6 +771,15 @@ const loadHistories = async () => {
             catch (err) {
                 addLog("Failed to load TTS history: " + (err?.message || "unknown error"));
             }
+        })(),
+        (async () => {
+            try {
+                const docRes = await documentApi.list();
+                documents.value = (docRes.data || []).sort((a, b) => b.uploadTime - a.uploadTime);
+            }
+            catch (err) {
+                addLog("Failed to load RAG documents: " + (err?.message || "unknown error"));
+            }
         })()
     ]);
 };
@@ -425,7 +815,7 @@ const defaultSession = (provider) => {
     return {
         id: `${provider}-${Date.now()}-${Math.random().toString(16).slice(2)}`,
         provider,
-        title: provider === "minimax" ? t("chat.minimaxDefaultName") : provider === "deepseek" ? t("chat.deepseekDefaultName") : t("chat.openaiDefaultName"),
+        title: provider === "minimax" ? t("chat.minimaxDefaultName") : provider === "deepseek" ? t("chat.deepseekDefaultName") : provider === "openai" ? t("chat.openaiDefaultName") : t("chat.geminiDefaultName"),
         createdAt: now,
         updatedAt: now,
         messages: []
@@ -441,14 +831,22 @@ const syncMessagesFromSession = (provider) => {
         minimaxMessages.value = session ? [...session.messages] : [];
     else if (provider === "deepseek")
         deepSeekMessages.value = session ? [...session.messages] : [];
-    else
+    else if (provider === "openai")
         openaiMessages.value = session ? [...session.messages] : [];
+    else
+        geminiMessages.value = session ? [...session.messages] : [];
 };
 const saveActiveSession = (provider) => {
     const session = chatSessions.value.find(item => item.id === activeSessionIds.value[provider]);
     if (!session)
         return;
-    session.messages = provider === "minimax" ? [...minimaxMessages.value] : provider === "deepseek" ? [...deepSeekMessages.value] : [...openaiMessages.value];
+    session.messages = provider === "minimax"
+        ? [...minimaxMessages.value]
+        : provider === "deepseek"
+            ? [...deepSeekMessages.value]
+            : provider === "openai"
+                ? [...openaiMessages.value]
+                : [...geminiMessages.value];
     session.updatedAt = new Date().toISOString();
     const firstUserMessage = session.messages.find(item => item.role === "user")?.content;
     if (firstUserMessage && session.title.endsWith(t("chat.minimaxDefaultName").split(" ")[1] || t("chat.minimaxDefaultName"))) {
@@ -472,7 +870,12 @@ const ensureSessions = () => {
         chatSessions.value.push(session);
         activeSessionIds.value.openai = session.id;
     }
-    ["minimax", "deepseek", "openai"].forEach(provider => {
+    if (!chatSessions.value.some(session => session.provider === "gemini")) {
+        const session = defaultSession("gemini");
+        chatSessions.value.push(session);
+        activeSessionIds.value.gemini = session.id;
+    }
+    ["minimax", "deepseek", "openai", "gemini"].forEach(provider => {
         const currentActiveId = activeSessionIds.value[provider];
         const activeSession = chatSessions.value.find(session => session.id === currentActiveId);
         // If active session does not exist, or if its provider does not match, reset it to the first session of this provider
@@ -493,7 +896,13 @@ const ensureSessions = () => {
 };
 const createSession = (provider = activeProvider.value) => {
     const session = defaultSession(provider);
-    session.title = provider === "minimax" ? t("chat.newMinimaxName") : provider === "deepseek" ? t("chat.newDeepseekName") : t("chat.newOpenAIName");
+    session.title = provider === "minimax"
+        ? t("chat.newMinimaxName")
+        : provider === "deepseek"
+            ? t("chat.newDeepseekName")
+            : provider === "openai"
+                ? t("chat.newOpenAIName")
+                : t("chat.newGeminiName");
     chatSessions.value.unshift(session);
     activeSessionIds.value[provider] = session.id;
     activeProvider.value = provider;
@@ -570,6 +979,12 @@ const loadSettings = async () => {
         settingsDraft.value.openai.model = settingsState.value?.openai?.model || "";
         settingsDraft.value.openai.baseUrl = settingsState.value?.openai?.baseUrl || "";
         settingsDraft.value.openai.apiKey = "";
+        settingsDraft.value.gemini.model = settingsState.value?.gemini?.model || "";
+        settingsDraft.value.gemini.baseUrl = settingsState.value?.gemini?.baseUrl || "";
+        settingsDraft.value.gemini.apiKey = "";
+        if (settingsState.value?.gemini?.model) {
+            selectedGeminiModel.value = settingsState.value.gemini.model;
+        }
     }
     catch (err) {
         addLog("Settings load failed: " + (err?.message || "unknown error"));
@@ -595,8 +1010,13 @@ const saveProviderSettings = async (provider) => {
         const payload = { model: draft.model };
         if (draft.apiKey.trim())
             payload.apiKey = draft.apiKey.trim();
+        if (draft.baseUrl && draft.baseUrl.trim())
+            payload.baseUrl = draft.baseUrl.trim();
         const res = await settingsApi.update(provider, payload);
         settingsState.value = { ...settingsState.value, [provider]: res.data };
+        if (provider === "gemini" && res.data?.model) {
+            selectedGeminiModel.value = res.data.model;
+        }
         draft.apiKey = "";
         addLog(`${provider} settings saved.`);
         addNotification("success", t("settings.saveSuccess"), `${providerMeta[provider].label} ${t("settings.saveSuccessDesc")}`);
@@ -614,6 +1034,107 @@ const saveProviderSettings = async (provider) => {
 const openDeepSeekUsage = () => {
     window.open("https://platform.deepseek.com/usage", "_blank");
 };
+const loadGeminiCapabilities = async () => {
+    try {
+        // First: quickly load cached capabilities to populate the UI fast
+        const res = await geminiApi.capabilities();
+        geminiCapabilities.value = res.data;
+    }
+    catch (err) {
+        addLog("加载 Gemini 能力失败：" + (err?.message || "未知错误"));
+    }
+    // Then: trigger a background probe to get fresh availability data
+    // (silent mode — no task log, just updates the list)
+    handleGeminiProbe(true);
+};
+const handleGeminiProbe = async (silent = false) => {
+    if (geminiProbeLoading.value)
+        return;
+    geminiProbeLoading.value = true;
+    const task = silent ? null : createTask("检测 Gemini 中转模型", "gemini", "开始探测本地中转站的所有候选模型可用性...");
+    try {
+        const res = await geminiApi.probe();
+        geminiCapabilities.value = res.data;
+        if (task) {
+            finishTask(task, "success", "Gemini 中转模型探测完成。可用模型数：" + (res.data?.models?.filter((m) => m.available)?.length || 0));
+        }
+    }
+    catch (err) {
+        if (task) {
+            finishTask(task, "failed", err?.message || "探测失败");
+            addLog("探测 Gemini 模型失败：" + (err?.message || "未知错误"));
+        }
+    }
+    finally {
+        geminiProbeLoading.value = false;
+    }
+};
+const triggerFileUpload = () => {
+    console.log("triggerFileUpload called, fileInput.value is:", fileInput.value);
+    if (fileInput.value) {
+        fileInput.value.click();
+    }
+    else {
+        alert("上传控件未初始化，请稍后重试或检查控制台。");
+    }
+};
+const handleFileUpload = async (event) => {
+    const target = event.target;
+    if (!target.files || !target.files[0]) {
+        console.log("handleFileUpload: No file selected.");
+        return;
+    }
+    const file = target.files[0];
+    console.log("handleFileUpload: Selected file:", file.name, file.size, file.type);
+    isUploading.value = true;
+    addLog("开始上传多模态附件：" + file.name + " (" + file.size + " 字节)");
+    const task = createTask("上传多模态附件", "gemini", "正在上传文件：" + file.name);
+    try {
+        const res = await systemApi.upload(file);
+        console.log("handleFileUpload: Upload response received:", res.data);
+        if (res.data && res.data.success) {
+            if (res.data.type === 'document') {
+                finishTask(task, "success", "成功上传并解析本地文档：" + file.name);
+                addNotification("success", "已导入知识库", file.name);
+                addLog("文档已成功导入 RAG 知识库：" + file.name + ", ID: " + res.data.id);
+                alert("文档《" + file.name + "》已成功导入本地知识库，已为您自动勾选关联！");
+                await loadHistories();
+                if (res.data.id && !selectedDocIds.value.includes(res.data.id)) {
+                    selectedDocIds.value.push(res.data.id);
+                }
+            }
+            else {
+                uploadedFiles.value.push({
+                    url: res.data.url,
+                    type: res.data.type,
+                    name: res.data.name
+                });
+                finishTask(task, "success", "成功上传文件：" + file.name);
+                addNotification("success", "上传成功", file.name);
+                addLog("多模态附件上传成功：" + file.name + ", URL: " + res.data.url);
+                alert("文件《" + file.name + "》上传成功，已放入发送队列！");
+            }
+        }
+        else {
+            throw new Error(res.data?.message || "接口返回失败");
+        }
+    }
+    catch (err) {
+        const errMsg = err?.response?.data?.message || err?.message || "网络请求失败";
+        console.error("handleFileUpload: Upload error:", err);
+        finishTask(task, "failed", errMsg);
+        addNotification("error", "上传失败", errMsg);
+        addLog("上传附件失败：" + errMsg);
+        alert("上传失败原因: " + errMsg);
+    }
+    finally {
+        isUploading.value = false;
+        target.value = "";
+    }
+};
+const removeUploadedFile = (index) => {
+    uploadedFiles.value.splice(index, 1);
+};
 const loadApiStatus = async () => {
     try {
         const healthRes = await systemApi.getHealth();
@@ -622,7 +1143,7 @@ const loadApiStatus = async () => {
     catch {
         systemHealth.value = t("apiStatus.statusError");
     }
-    await Promise.all([loadSettings(), loadDeepSeekAccount()]);
+    await Promise.all([loadSettings(), loadDeepSeekAccount(), loadGeminiCapabilities()]);
 };
 const persistTtsUrls = () => {
     try {
@@ -777,6 +1298,9 @@ const deleteAsset = async (asset) => {
             if (asset.type === 'image') {
                 await imageApi.deleteHistory(asset.id);
             }
+            else if (asset.type === 'document') {
+                await documentApi.delete(asset.id);
+            }
             else {
                 await ttsApi.deleteHistory(asset.id);
             }
@@ -834,6 +1358,9 @@ const deleteSelectedAssets = async () => {
             try {
                 if (type === 'image') {
                     await imageApi.deleteHistory(id);
+                }
+                else if (type === 'document') {
+                    await documentApi.delete(id);
                 }
                 else {
                     await ttsApi.deleteHistory(id);
@@ -903,6 +1430,9 @@ const exportMarkdown = () => {
         "## OpenAI Chat",
         ...chatSessions.value.filter(item => item.provider === "openai").flatMap(session => [`### ${session.title}`, ...session.messages.map(item => `- **${item.role}**: ${item.content}`)]),
         "",
+        "## Gemini Chat",
+        ...chatSessions.value.filter(item => item.provider === "gemini").flatMap(session => [`### ${session.title}`, ...session.messages.map(item => `- **${item.role}**: ${item.content}`)]),
+        "",
         "## Favorites",
         ...favorites.value.map(item => `- **${item.title}** (${item.type}) ${item.content || item.url || ""}`)
     ];
@@ -910,7 +1440,8 @@ const exportMarkdown = () => {
 };
 const persistLayout = () => {
     localStorage.setItem("weizhi.layout", JSON.stringify({
-        sidebarWidth: sidebarWidth.value
+        sidebarWidth: sidebarWidth.value,
+        chatInputHeight: chatInputHeight.value
     }));
 };
 const restoreLayout = () => {
@@ -921,6 +1452,8 @@ const restoreLayout = () => {
         const data = JSON.parse(raw);
         if (typeof data.sidebarWidth === "number")
             sidebarWidth.value = Math.min(420, Math.max(180, data.sidebarWidth));
+        if (typeof data.chatInputHeight === "number")
+            chatInputHeight.value = Math.min(600, Math.max(90, data.chatInputHeight));
     }
     catch {
         // Ignore invalid local storage state.
@@ -930,6 +1463,12 @@ const startResize = (target, event) => {
     resizing = target;
     event.preventDefault();
     document.body.classList.add("is-resizing");
+    if (target === "chatInput") {
+        const inputContainerEl = document.querySelector(".input-container");
+        if (inputContainerEl && chatInputHeight.value === null) {
+            chatInputHeight.value = inputContainerEl.offsetHeight;
+        }
+    }
     window.addEventListener("mousemove", resizeLayout);
     window.addEventListener("mouseup", stopResize);
 };
@@ -939,6 +1478,11 @@ const resizeLayout = (event) => {
     if (resizing === "sidebar") {
         sidebarWidth.value = Math.min(420, Math.max(180, event.clientX));
     }
+    else if (resizing === "chatInput") {
+        const rawHeight = window.innerHeight - event.clientY;
+        const maxHeight = Math.min(600, window.innerHeight * 0.6);
+        chatInputHeight.value = Math.min(maxHeight, Math.max(90, rawHeight));
+    }
 };
 const stopResize = () => {
     if (resizing)
@@ -947,6 +1491,11 @@ const stopResize = () => {
     document.body.classList.remove("is-resizing");
     window.removeEventListener("mousemove", resizeLayout);
     window.removeEventListener("mouseup", stopResize);
+};
+const handleGlobalError = (event) => {
+    const customEvt = event;
+    const errorMsg = customEvt.detail?.message || "Unknown error";
+    addNotification("error", t("notifications.systemError"), errorMsg);
 };
 onMounted(async () => {
     restoreLayout();
@@ -959,7 +1508,7 @@ onMounted(async () => {
     addLog("System Initialized. Log stream connected.");
     await loadLogEntries();
     await Promise.all([loadHistories(), loadVoices()]);
-    await Promise.all([loadDeepSeekAccount(), loadSettings()]);
+    await Promise.all([loadDeepSeekAccount(), loadSettings(), loadGeminiCapabilities()]);
     try {
         const storedSessions = localStorage.getItem("weizhi.chatSessions");
         if (storedSessions)
@@ -1023,20 +1572,49 @@ onMounted(async () => {
         }
     }
     catch { }
+    window.addEventListener("click", closeModelDropdown);
+    window.addEventListener("weizhi-global-error", handleGlobalError);
+    // 启动程序自动探测可用模型
+    handleGeminiProbe();
 });
 onBeforeUnmount(() => {
     if (logEventSource)
         logEventSource.close();
+    window.removeEventListener("click", closeModelDropdown);
+    window.removeEventListener("weizhi-global-error", handleGlobalError);
     stopResize();
 });
 const handleSend = async () => {
-    if (!inputText.value.trim() || isThinking.value)
+    if ((!inputText.value.trim() && uploadedFiles.value.length === 0) || isThinking.value)
         return;
-    const userMsg = inputText.value.trim();
+    let userMsg = inputText.value.trim();
+    const mediaItems = uploadedFiles.value.map(file => ({
+        type: file.type,
+        url: file.url
+    }));
+    if (uploadedFiles.value.length > 0) {
+        const mediaTags = uploadedFiles.value.map(file => {
+            if (file.type === "image") {
+                return `\n![${file.name}](${file.url})`;
+            }
+            else {
+                return `\n[语音](${file.url})`;
+            }
+        }).join("");
+        userMsg += mediaTags;
+    }
+    // Clear uploaded files state
+    uploadedFiles.value = [];
     const provider = activeProvider.value;
     const task = createTask(`${providerMeta[provider].label} ${t("chat.qaTask")}`, provider, userMsg.slice(0, 80));
-    const targetMessages = provider === "minimax" ? minimaxMessages.value : provider === "deepseek" ? deepSeekMessages.value : openaiMessages.value;
-    targetMessages.push({ role: "user", content: userMsg });
+    const targetMessages = provider === "minimax"
+        ? minimaxMessages.value
+        : provider === "deepseek"
+            ? deepSeekMessages.value
+            : provider === "openai"
+                ? openaiMessages.value
+                : geminiMessages.value;
+    targetMessages.push({ role: "user", content: userMsg, media: mediaItems });
     saveActiveSession(provider);
     scrollChatToBottom();
     inputText.value = "";
@@ -1047,7 +1625,12 @@ const handleSend = async () => {
     // Helper to check if this is an image prompt (which cannot be streamed and must use blocking endpoint)
     const isImagePrompt = (input) => {
         const s = input.toLowerCase();
-        return (s.includes("生成") || s.includes("画") || s.includes("创建") || s.includes("draw"))
+        const questionMarkers = ["为什么", "怎么", "如何", "啥", "什么", "吗", "?", "？", "why", "how", "what"];
+        if (s.includes("/api/images/files/") || s.includes("图片已生成"))
+            return false;
+        if (questionMarkers.some(marker => s.includes(marker)))
+            return false;
+        return (s.includes("生成") || s.includes("画") || s.includes("创建") || s.includes("draw") || s.includes("create"))
             && (s.includes("图片") || s.includes("图像") || s.includes("照片") || s.includes("image") || s.includes("picture"));
     };
     if (isImagePrompt(userMsg)) {
@@ -1056,7 +1639,9 @@ const handleSend = async () => {
             ? deepSeekApi.ask(userMsg, targetMessages.slice(0, -1).map((message) => ({ role: message.role, content: message.content })), options)
             : provider === "openai"
                 ? openaiApi.ask(userMsg, targetMessages.slice(0, -1).map((message) => ({ role: message.role, content: message.content })), options)
-                : chatApi.ask(userMsg, targetMessages.slice(0, -1).map((message) => ({ role: message.role, content: message.content })), options);
+                : provider === "gemini"
+                    ? geminiApi.ask(userMsg, targetMessages.slice(0, -1).map((message) => ({ role: message.role, content: message.content })), geminiMode.value, selectedDocIds.value, selectedGeminiModel.value, options)
+                    : chatApi.ask(userMsg, targetMessages.slice(0, -1).map((message) => ({ role: message.role, content: message.content })), options);
         request.then(async (res) => {
             const payload = res.data;
             const content = typeof payload?.text === "string" ? payload.text : (typeof payload === "string" ? payload : JSON.stringify(payload));
@@ -1090,7 +1675,9 @@ const handleSend = async () => {
             ? deepSeekApi.streamUrl()
             : provider === "openai"
                 ? openaiApi.streamUrl()
-                : chatApi.streamUrl();
+                : provider === "gemini"
+                    ? geminiApi.streamUrl()
+                    : chatApi.streamUrl();
         // Push an initial empty assistant message block
         const assistantMsg = ref({ role: "assistant", content: "", media: [] });
         targetMessages.push(assistantMsg.value);
@@ -1100,7 +1687,10 @@ const handleSend = async () => {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
                 body: JSON.stringify({
-                    messages: targetMessages.slice(0, -1).map(x => ({ role: x.role, content: x.content }))
+                    messages: targetMessages.slice(0, -1).map(x => ({ role: x.role, content: x.content })),
+                    mode: provider === "gemini" ? geminiMode.value : undefined,
+                    documentIds: provider === "gemini" ? selectedDocIds.value : undefined,
+                    model: provider === "gemini" ? selectedGeminiModel.value : undefined
                 }),
                 signal: chatAbortController.value.signal
             });
@@ -1112,6 +1702,18 @@ const handleSend = async () => {
                 throw new Error("ReadableStream not supported on response");
             const decoder = new TextDecoder("utf-8");
             let buffer = "";
+            let currentEvent = "message";
+            let inReasoningBlock = false;
+            let rafScrollPending = false;
+            const throttledScroll = () => {
+                if (!rafScrollPending) {
+                    rafScrollPending = true;
+                    requestAnimationFrame(() => {
+                        scrollChatToBottom();
+                        rafScrollPending = false;
+                    });
+                }
+            };
             while (true) {
                 const { done, value } = await reader.read();
                 if (done)
@@ -1120,20 +1722,63 @@ const handleSend = async () => {
                 const lines = buffer.split("\n");
                 buffer = lines.pop() || ""; // Save partial line to buffer
                 for (const line of lines) {
-                    const cleaned = line.trim();
-                    if (cleaned.startsWith("data:")) {
-                        const dataToken = cleaned.substring(5).trim();
-                        // Append token
-                        assistantMsg.value.content += dataToken;
-                        scrollChatToBottom();
+                    const trimmed = line.trim();
+                    if (!trimmed) {
+                        currentEvent = "message";
+                        continue;
                     }
-                    else if (cleaned.startsWith("event:error") || cleaned.startsWith("error:")) {
-                        const errorLine = lines.find(x => x.startsWith("data:"));
-                        if (errorLine) {
-                            assistantMsg.value.content += "\nError: " + errorLine.substring(5).trim();
+                    if (trimmed.startsWith("event:")) {
+                        currentEvent = trimmed.substring(6).trim();
+                    }
+                    else if (trimmed.startsWith("data:")) {
+                        const rawToken = line.substring(5);
+                        const dataToken = rawToken === "" ? "\n" : rawToken;
+                        if (dataToken.trim() === "[DONE]")
+                            break;
+                        if (currentEvent === "error") {
+                            assistantMsg.value.content += "\n[Error: " + dataToken.trim() + "]";
                         }
+                        else if (currentEvent === "reasoning") {
+                            // Properly accumulate reasoning tokens inside a single <think> block
+                            if (!inReasoningBlock) {
+                                assistantMsg.value.content += "<think>\n";
+                                inReasoningBlock = true;
+                            }
+                            assistantMsg.value.content += dataToken;
+                        }
+                        else {
+                            // First non-reasoning token: close the reasoning block if open
+                            if (inReasoningBlock) {
+                                assistantMsg.value.content += "\n</think>\n\n";
+                                inReasoningBlock = false;
+                            }
+                            if (currentEvent === "media") {
+                                try {
+                                    const mediaPayload = JSON.parse(dataToken.trim());
+                                    if (mediaPayload?.type && mediaPayload?.url) {
+                                        assistantMsg.value.media = [...(assistantMsg.value.media || []), { type: mediaPayload.type, url: mediaPayload.url }];
+                                    }
+                                }
+                                catch {
+                                    assistantMsg.value.content += dataToken;
+                                }
+                            }
+                            else {
+                                // Preserve spaces and newlines
+                                assistantMsg.value.content += dataToken;
+                            }
+                        }
+                        throttledScroll();
+                    }
+                    else if (trimmed.startsWith("error:")) {
+                        assistantMsg.value.content += "\n[Error: " + trimmed.substring(6).trim() + "]";
+                        throttledScroll();
                     }
                 }
+            }
+            // Close any unclosed reasoning block (edge case: stream ended mid-think)
+            if (inReasoningBlock) {
+                assistantMsg.value.content += "\n</think>\n\n";
             }
             saveActiveSession(provider);
             finishTask(task, "success", t("chat.qaSuccess"));
@@ -1306,8 +1951,10 @@ const clearCurrentConversation = () => {
         minimaxMessages.value = [];
     else if (activeProvider.value === "deepseek")
         deepSeekMessages.value = [];
-    else
+    else if (activeProvider.value === "openai")
         openaiMessages.value = [];
+    else
+        geminiMessages.value = [];
     saveActiveSession(activeProvider.value);
 };
 const clearSession = (provider) => {
@@ -1320,8 +1967,10 @@ const clearSession = (provider) => {
         minimaxMessages.value = [];
     else if (provider === "deepseek")
         deepSeekMessages.value = [];
-    else
+    else if (provider === "openai")
         openaiMessages.value = [];
+    else
+        geminiMessages.value = [];
     saveSessions();
 };
 const savePromptTemplates = () => {
@@ -1445,6 +2094,15 @@ if (__VLS_ctx.activeView === 'home') {
             } },
         ...{ class: "preview-btn secondary" },
     });
+    __VLS_asFunctionalElement(__VLS_intrinsicElements.button, __VLS_intrinsicElements.button)({
+        ...{ onClick: (...[$event]) => {
+                if (!(__VLS_ctx.activeView === 'home'))
+                    return;
+                __VLS_ctx.switchProvider('gemini');
+            } },
+        ...{ class: "preview-btn secondary" },
+    });
+    (__VLS_ctx.$t("home.enterGemini"));
     __VLS_asFunctionalElement(__VLS_intrinsicElements.button, __VLS_intrinsicElements.button)({
         ...{ onClick: (__VLS_ctx.openAssets) },
         ...{ class: "preview-btn secondary" },
@@ -1886,6 +2544,216 @@ else if (__VLS_ctx.activeView === 'settings') {
         disabled: (__VLS_ctx.settingsLoading),
     });
     (__VLS_ctx.$t("settings.saveOpenai"));
+    __VLS_asFunctionalElement(__VLS_intrinsicElements.section, __VLS_intrinsicElements.section)({
+        ...{ class: "settings-card gemini-card" },
+    });
+    __VLS_asFunctionalElement(__VLS_intrinsicElements.div, __VLS_intrinsicElements.div)({
+        ...{ class: "settings-card-head" },
+    });
+    __VLS_asFunctionalElement(__VLS_intrinsicElements.strong, __VLS_intrinsicElements.strong)({});
+    __VLS_asFunctionalElement(__VLS_intrinsicElements.span, __VLS_intrinsicElements.span)({});
+    (__VLS_ctx.settingsState?.gemini?.apiKeyConfigured ? __VLS_ctx.settingsState?.gemini?.apiKeyMasked : __VLS_ctx.$t("apiStatus.notConfigured"));
+    __VLS_asFunctionalElement(__VLS_intrinsicElements.label, __VLS_intrinsicElements.label)({});
+    __VLS_asFunctionalElement(__VLS_intrinsicElements.input)({
+        value: (__VLS_ctx.settingsDraft.gemini.baseUrl),
+        type: "text",
+        placeholder: "http://127.0.0.1:8045/v1",
+    });
+    __VLS_asFunctionalElement(__VLS_intrinsicElements.label, __VLS_intrinsicElements.label)({});
+    __VLS_asFunctionalElement(__VLS_intrinsicElements.input)({
+        type: "password",
+        placeholder: (__VLS_ctx.$t('settings.emptyKey')),
+    });
+    (__VLS_ctx.settingsDraft.gemini.apiKey);
+    __VLS_asFunctionalElement(__VLS_intrinsicElements.label, __VLS_intrinsicElements.label)({});
+    (__VLS_ctx.$t("settings.modelLabel"));
+    __VLS_asFunctionalElement(__VLS_intrinsicElements.div, __VLS_intrinsicElements.div)({
+        ...{ class: "settings-row" },
+    });
+    __VLS_asFunctionalElement(__VLS_intrinsicElements.select, __VLS_intrinsicElements.select)({
+        value: (__VLS_ctx.settingsDraft.gemini.model),
+    });
+    for (const [model] of __VLS_getVForSourceType((__VLS_ctx.geminiModels))) {
+        __VLS_asFunctionalElement(__VLS_intrinsicElements.option, __VLS_intrinsicElements.option)({
+            key: (model.id),
+            value: (model.id),
+        });
+        (model.name || model.id);
+    }
+    __VLS_asFunctionalElement(__VLS_intrinsicElements.button, __VLS_intrinsicElements.button)({
+        ...{ onClick: (...[$event]) => {
+                if (!!(__VLS_ctx.activeView === 'home'))
+                    return;
+                if (!!(__VLS_ctx.activeView === 'dataManagement'))
+                    return;
+                if (!(__VLS_ctx.activeView === 'settings'))
+                    return;
+                __VLS_ctx.refreshProviderModels('gemini');
+            } },
+        ...{ class: "preview-btn secondary" },
+    });
+    (__VLS_ctx.$t("settings.refreshModel"));
+    __VLS_asFunctionalElement(__VLS_intrinsicElements.button, __VLS_intrinsicElements.button)({
+        ...{ onClick: (...[$event]) => {
+                if (!!(__VLS_ctx.activeView === 'home'))
+                    return;
+                if (!!(__VLS_ctx.activeView === 'dataManagement'))
+                    return;
+                if (!(__VLS_ctx.activeView === 'settings'))
+                    return;
+                __VLS_ctx.saveProviderSettings('gemini');
+            } },
+        ...{ class: "save-settings-btn" },
+        disabled: (__VLS_ctx.settingsLoading),
+    });
+    (__VLS_ctx.$t("settings.saveGemini"));
+    __VLS_asFunctionalElement(__VLS_intrinsicElements.div, __VLS_intrinsicElements.div)({
+        ...{ class: "gemini-probe-section" },
+        ...{ style: {} },
+    });
+    __VLS_asFunctionalElement(__VLS_intrinsicElements.div, __VLS_intrinsicElements.div)({
+        ...{ style: {} },
+    });
+    __VLS_asFunctionalElement(__VLS_intrinsicElements.h4, __VLS_intrinsicElements.h4)({
+        ...{ style: {} },
+    });
+    __VLS_asFunctionalElement(__VLS_intrinsicElements.button, __VLS_intrinsicElements.button)({
+        ...{ onClick: (...[$event]) => {
+                if (!!(__VLS_ctx.activeView === 'home'))
+                    return;
+                if (!!(__VLS_ctx.activeView === 'dataManagement'))
+                    return;
+                if (!(__VLS_ctx.activeView === 'settings'))
+                    return;
+                __VLS_ctx.handleGeminiProbe(false);
+            } },
+        ...{ class: "preview-btn secondary" },
+        disabled: (__VLS_ctx.geminiProbeLoading),
+        ...{ style: {} },
+    });
+    if (__VLS_ctx.geminiProbeLoading) {
+        __VLS_asFunctionalElement(__VLS_intrinsicElements.span, __VLS_intrinsicElements.span)({});
+    }
+    else {
+        __VLS_asFunctionalElement(__VLS_intrinsicElements.span, __VLS_intrinsicElements.span)({});
+    }
+    __VLS_asFunctionalElement(__VLS_intrinsicElements.p, __VLS_intrinsicElements.p)({
+        ...{ style: {} },
+    });
+    (__VLS_ctx.geminiCapabilities?.baseUrl || 'http://127.0.0.1:8045/v1');
+    if (__VLS_ctx.geminiCapabilities?.checkedAt) {
+        __VLS_asFunctionalElement(__VLS_intrinsicElements.span, __VLS_intrinsicElements.span)({
+            ...{ style: {} },
+        });
+        (new Date(__VLS_ctx.geminiCapabilities.checkedAt).toLocaleTimeString());
+    }
+    if (__VLS_ctx.geminiCapabilities?.accountEmail) {
+        __VLS_asFunctionalElement(__VLS_intrinsicElements.span, __VLS_intrinsicElements.span)({
+            ...{ style: {} },
+        });
+        (__VLS_ctx.geminiCapabilities.accountEmail);
+    }
+    if (__VLS_ctx.geminiCapabilities?.models && __VLS_ctx.geminiCapabilities.models.length) {
+        __VLS_asFunctionalElement(__VLS_intrinsicElements.div, __VLS_intrinsicElements.div)({
+            ...{ style: {} },
+        });
+        __VLS_asFunctionalElement(__VLS_intrinsicElements.table, __VLS_intrinsicElements.table)({
+            ...{ style: {} },
+        });
+        __VLS_asFunctionalElement(__VLS_intrinsicElements.thead, __VLS_intrinsicElements.thead)({});
+        __VLS_asFunctionalElement(__VLS_intrinsicElements.tr, __VLS_intrinsicElements.tr)({
+            ...{ style: {} },
+        });
+        __VLS_asFunctionalElement(__VLS_intrinsicElements.th, __VLS_intrinsicElements.th)({
+            ...{ style: {} },
+        });
+        __VLS_asFunctionalElement(__VLS_intrinsicElements.th, __VLS_intrinsicElements.th)({
+            ...{ style: {} },
+        });
+        __VLS_asFunctionalElement(__VLS_intrinsicElements.th, __VLS_intrinsicElements.th)({
+            ...{ style: {} },
+        });
+        __VLS_asFunctionalElement(__VLS_intrinsicElements.th, __VLS_intrinsicElements.th)({
+            ...{ style: {} },
+        });
+        __VLS_asFunctionalElement(__VLS_intrinsicElements.th, __VLS_intrinsicElements.th)({
+            ...{ style: {} },
+        });
+        __VLS_asFunctionalElement(__VLS_intrinsicElements.tbody, __VLS_intrinsicElements.tbody)({});
+        for (const [m] of __VLS_getVForSourceType((__VLS_ctx.geminiCapabilities.models))) {
+            __VLS_asFunctionalElement(__VLS_intrinsicElements.tr, __VLS_intrinsicElements.tr)({
+                key: (m.id),
+                ...{ style: {} },
+            });
+            __VLS_asFunctionalElement(__VLS_intrinsicElements.td, __VLS_intrinsicElements.td)({
+                ...{ style: {} },
+            });
+            __VLS_asFunctionalElement(__VLS_intrinsicElements.span, __VLS_intrinsicElements.span)({
+                ...{ style: ({ color: m.available ? '#60a5fa' : '#9ca3af' }) },
+            });
+            (m.id);
+            __VLS_asFunctionalElement(__VLS_intrinsicElements.div, __VLS_intrinsicElements.div)({
+                ...{ style: {} },
+            });
+            (m.group);
+            __VLS_asFunctionalElement(__VLS_intrinsicElements.td, __VLS_intrinsicElements.td)({
+                ...{ style: {} },
+            });
+            if (m.available) {
+                __VLS_asFunctionalElement(__VLS_intrinsicElements.span, __VLS_intrinsicElements.span)({
+                    ...{ style: {} },
+                });
+                __VLS_asFunctionalElement(__VLS_intrinsicElements.span, __VLS_intrinsicElements.span)({
+                    ...{ style: {} },
+                });
+            }
+            else {
+                __VLS_asFunctionalElement(__VLS_intrinsicElements.span, __VLS_intrinsicElements.span)({
+                    ...{ style: {} },
+                });
+                __VLS_asFunctionalElement(__VLS_intrinsicElements.span, __VLS_intrinsicElements.span)({
+                    ...{ style: {} },
+                });
+                (m.errorType);
+            }
+            __VLS_asFunctionalElement(__VLS_intrinsicElements.td, __VLS_intrinsicElements.td)({
+                ...{ style: {} },
+            });
+            (m.available ? m.latencyMs + 'ms' : '--');
+            __VLS_asFunctionalElement(__VLS_intrinsicElements.td, __VLS_intrinsicElements.td)({
+                ...{ style: {} },
+            });
+            if (m.mappedModel) {
+                __VLS_asFunctionalElement(__VLS_intrinsicElements.div, __VLS_intrinsicElements.div)({
+                    ...{ style: {} },
+                    title: (m.mappedModel),
+                });
+                (m.mappedModel);
+            }
+            if (m.accountEmail) {
+                __VLS_asFunctionalElement(__VLS_intrinsicElements.div, __VLS_intrinsicElements.div)({
+                    ...{ style: {} },
+                    title: (m.accountEmail),
+                });
+                (m.accountEmail);
+            }
+            if (!m.mappedModel && !m.accountEmail) {
+                __VLS_asFunctionalElement(__VLS_intrinsicElements.div, __VLS_intrinsicElements.div)({
+                    ...{ style: {} },
+                });
+            }
+            __VLS_asFunctionalElement(__VLS_intrinsicElements.td, __VLS_intrinsicElements.td)({
+                ...{ style: {} },
+                title: (m.recommendedUse),
+            });
+            (m.recommendedUse);
+        }
+    }
+    else {
+        __VLS_asFunctionalElement(__VLS_intrinsicElements.div, __VLS_intrinsicElements.div)({
+            ...{ style: {} },
+        });
+    }
 }
 else if (__VLS_ctx.activeView === 'logs') {
     __VLS_asFunctionalElement(__VLS_intrinsicElements.section, __VLS_intrinsicElements.section)({
@@ -3043,6 +3911,38 @@ else if (__VLS_ctx.activeView === 'assets') {
     });
     (__VLS_ctx.$t("assets.tabAudio"));
     (__VLS_ctx.assetItems.filter(item => item.type === 'audio').length);
+    __VLS_asFunctionalElement(__VLS_intrinsicElements.button, __VLS_intrinsicElements.button)({
+        ...{ onClick: (...[$event]) => {
+                if (!!(__VLS_ctx.activeView === 'home'))
+                    return;
+                if (!!(__VLS_ctx.activeView === 'dataManagement'))
+                    return;
+                if (!!(__VLS_ctx.activeView === 'settings'))
+                    return;
+                if (!!(__VLS_ctx.activeView === 'logs'))
+                    return;
+                if (!!(__VLS_ctx.activeView === 'speech'))
+                    return;
+                if (!!(__VLS_ctx.activeView === 'translation'))
+                    return;
+                if (!!(__VLS_ctx.activeView === 'sessions'))
+                    return;
+                if (!!(__VLS_ctx.activeView === 'tasks'))
+                    return;
+                if (!!(__VLS_ctx.activeView === 'notifications'))
+                    return;
+                if (!!(__VLS_ctx.activeView === 'prompts'))
+                    return;
+                if (!!(__VLS_ctx.activeView === 'apiStatus'))
+                    return;
+                if (!(__VLS_ctx.activeView === 'assets'))
+                    return;
+                __VLS_ctx.activeAssetTab = 'document';
+            } },
+        ...{ class: "assets-tab-btn" },
+        ...{ class: ({ active: __VLS_ctx.activeAssetTab === 'document' }) },
+    });
+    (__VLS_ctx.assetItems.filter(item => item.type === 'document').length);
     if (__VLS_ctx.filteredAssetItems.length > 0) {
         __VLS_asFunctionalElement(__VLS_intrinsicElements.div, __VLS_intrinsicElements.div)({
             ...{ class: "assets-batch-actions" },
@@ -3248,7 +4148,7 @@ else if (__VLS_ctx.activeView === 'assets') {
                 ...{ class: "history-card-image" },
             });
         }
-        else {
+        else if (asset.type === 'audio') {
             __VLS_asFunctionalElement(__VLS_intrinsicElements.div, __VLS_intrinsicElements.div)({
                 ...{ onClick: (...[$event]) => {
                         if (!!(__VLS_ctx.activeView === 'home'))
@@ -3277,6 +4177,8 @@ else if (__VLS_ctx.activeView === 'assets') {
                             return;
                         if (!!(asset.type === 'image'))
                             return;
+                        if (!(asset.type === 'audio'))
+                            return;
                         __VLS_ctx.selectedAssetKeys.length > 0 ? __VLS_ctx.toggleSelectAsset(`${asset.type}-${asset.id}`) : null;
                     } },
                 ...{ class: "asset-audio-box" },
@@ -3296,6 +4198,60 @@ else if (__VLS_ctx.activeView === 'assets') {
                 controls: true,
                 ...{ class: "audio-preview" },
             });
+        }
+        else if (asset.type === 'document') {
+            __VLS_asFunctionalElement(__VLS_intrinsicElements.div, __VLS_intrinsicElements.div)({
+                ...{ onClick: (...[$event]) => {
+                        if (!!(__VLS_ctx.activeView === 'home'))
+                            return;
+                        if (!!(__VLS_ctx.activeView === 'dataManagement'))
+                            return;
+                        if (!!(__VLS_ctx.activeView === 'settings'))
+                            return;
+                        if (!!(__VLS_ctx.activeView === 'logs'))
+                            return;
+                        if (!!(__VLS_ctx.activeView === 'speech'))
+                            return;
+                        if (!!(__VLS_ctx.activeView === 'translation'))
+                            return;
+                        if (!!(__VLS_ctx.activeView === 'sessions'))
+                            return;
+                        if (!!(__VLS_ctx.activeView === 'tasks'))
+                            return;
+                        if (!!(__VLS_ctx.activeView === 'notifications'))
+                            return;
+                        if (!!(__VLS_ctx.activeView === 'prompts'))
+                            return;
+                        if (!!(__VLS_ctx.activeView === 'apiStatus'))
+                            return;
+                        if (!(__VLS_ctx.activeView === 'assets'))
+                            return;
+                        if (!!(asset.type === 'image'))
+                            return;
+                        if (!!(asset.type === 'audio'))
+                            return;
+                        if (!(asset.type === 'document'))
+                            return;
+                        __VLS_ctx.selectedAssetKeys.length > 0 ? __VLS_ctx.toggleSelectAsset(`${asset.type}-${asset.id}`) : __VLS_ctx.openAssetDetail(asset);
+                    } },
+                ...{ class: "asset-document-box" },
+                ...{ style: {} },
+            });
+            const __VLS_52 = {}.FileText;
+            /** @type {[typeof __VLS_components.FileText, ]} */ ;
+            // @ts-ignore
+            const __VLS_53 = __VLS_asFunctionalComponent(__VLS_52, new __VLS_52({
+                size: (40),
+                ...{ style: {} },
+            }));
+            const __VLS_54 = __VLS_53({
+                size: (40),
+                ...{ style: {} },
+            }, ...__VLS_functionalComponentArgsRest(__VLS_53));
+            __VLS_asFunctionalElement(__VLS_intrinsicElements.span, __VLS_intrinsicElements.span)({
+                ...{ style: {} },
+            });
+            (asset.title.split('.').pop());
         }
         __VLS_asFunctionalElement(__VLS_intrinsicElements.div, __VLS_intrinsicElements.div)({
             ...{ onClick: (...[$event]) => {
@@ -4220,15 +5176,15 @@ else {
     __VLS_asFunctionalElement(__VLS_intrinsicElements.div, __VLS_intrinsicElements.div)({
         ...{ class: "toolbar-title" },
     });
-    const __VLS_52 = {}.Terminal;
+    const __VLS_56 = {}.Terminal;
     /** @type {[typeof __VLS_components.Terminal, ]} */ ;
     // @ts-ignore
-    const __VLS_53 = __VLS_asFunctionalComponent(__VLS_52, new __VLS_52({
+    const __VLS_57 = __VLS_asFunctionalComponent(__VLS_56, new __VLS_56({
         size: (15),
     }));
-    const __VLS_54 = __VLS_53({
+    const __VLS_58 = __VLS_57({
         size: (15),
-    }, ...__VLS_functionalComponentArgsRest(__VLS_53));
+    }, ...__VLS_functionalComponentArgsRest(__VLS_57));
     __VLS_asFunctionalElement(__VLS_intrinsicElements.strong, __VLS_intrinsicElements.strong)({});
     (__VLS_ctx.activeMeta.label);
     __VLS_asFunctionalElement(__VLS_intrinsicElements.em, __VLS_intrinsicElements.em)({});
@@ -4236,6 +5192,456 @@ else {
     __VLS_asFunctionalElement(__VLS_intrinsicElements.div, __VLS_intrinsicElements.div)({
         ...{ class: "toolbar-actions" },
     });
+    if (__VLS_ctx.activeProvider === 'gemini') {
+        __VLS_asFunctionalElement(__VLS_intrinsicElements.div, __VLS_intrinsicElements.div)({
+            ...{ class: "gemini-mode-toggle" },
+            'aria-label': (__VLS_ctx.$t('chat.geminiModeLabel')),
+        });
+        __VLS_asFunctionalElement(__VLS_intrinsicElements.button, __VLS_intrinsicElements.button)({
+            ...{ onClick: (...[$event]) => {
+                    if (!!(__VLS_ctx.activeView === 'home'))
+                        return;
+                    if (!!(__VLS_ctx.activeView === 'dataManagement'))
+                        return;
+                    if (!!(__VLS_ctx.activeView === 'settings'))
+                        return;
+                    if (!!(__VLS_ctx.activeView === 'logs'))
+                        return;
+                    if (!!(__VLS_ctx.activeView === 'speech'))
+                        return;
+                    if (!!(__VLS_ctx.activeView === 'translation'))
+                        return;
+                    if (!!(__VLS_ctx.activeView === 'sessions'))
+                        return;
+                    if (!!(__VLS_ctx.activeView === 'tasks'))
+                        return;
+                    if (!!(__VLS_ctx.activeView === 'notifications'))
+                        return;
+                    if (!!(__VLS_ctx.activeView === 'prompts'))
+                        return;
+                    if (!!(__VLS_ctx.activeView === 'apiStatus'))
+                        return;
+                    if (!!(__VLS_ctx.activeView === 'assets'))
+                        return;
+                    if (!!(__VLS_ctx.activeView === 'favorites'))
+                        return;
+                    if (!!(__VLS_ctx.activeView === 'diagnostics'))
+                        return;
+                    if (!!(__VLS_ctx.activeView === 'exports'))
+                        return;
+                    if (!!(__VLS_ctx.activeView === 'imageHistory'))
+                        return;
+                    if (!!(__VLS_ctx.activeView === 'ttsHistory'))
+                        return;
+                    if (!(__VLS_ctx.activeProvider === 'gemini'))
+                        return;
+                    __VLS_ctx.geminiMode = 'auto';
+                } },
+            ...{ class: ({ active: __VLS_ctx.geminiMode === 'auto' }) },
+        });
+        (__VLS_ctx.$t("chat.geminiModeAuto"));
+        __VLS_asFunctionalElement(__VLS_intrinsicElements.button, __VLS_intrinsicElements.button)({
+            ...{ onClick: (...[$event]) => {
+                    if (!!(__VLS_ctx.activeView === 'home'))
+                        return;
+                    if (!!(__VLS_ctx.activeView === 'dataManagement'))
+                        return;
+                    if (!!(__VLS_ctx.activeView === 'settings'))
+                        return;
+                    if (!!(__VLS_ctx.activeView === 'logs'))
+                        return;
+                    if (!!(__VLS_ctx.activeView === 'speech'))
+                        return;
+                    if (!!(__VLS_ctx.activeView === 'translation'))
+                        return;
+                    if (!!(__VLS_ctx.activeView === 'sessions'))
+                        return;
+                    if (!!(__VLS_ctx.activeView === 'tasks'))
+                        return;
+                    if (!!(__VLS_ctx.activeView === 'notifications'))
+                        return;
+                    if (!!(__VLS_ctx.activeView === 'prompts'))
+                        return;
+                    if (!!(__VLS_ctx.activeView === 'apiStatus'))
+                        return;
+                    if (!!(__VLS_ctx.activeView === 'assets'))
+                        return;
+                    if (!!(__VLS_ctx.activeView === 'favorites'))
+                        return;
+                    if (!!(__VLS_ctx.activeView === 'diagnostics'))
+                        return;
+                    if (!!(__VLS_ctx.activeView === 'exports'))
+                        return;
+                    if (!!(__VLS_ctx.activeView === 'imageHistory'))
+                        return;
+                    if (!!(__VLS_ctx.activeView === 'ttsHistory'))
+                        return;
+                    if (!(__VLS_ctx.activeProvider === 'gemini'))
+                        return;
+                    __VLS_ctx.geminiMode = 'text';
+                } },
+            ...{ class: ({ active: __VLS_ctx.geminiMode === 'text' }) },
+        });
+        (__VLS_ctx.$t("chat.geminiModeText"));
+        __VLS_asFunctionalElement(__VLS_intrinsicElements.button, __VLS_intrinsicElements.button)({
+            ...{ onClick: (...[$event]) => {
+                    if (!!(__VLS_ctx.activeView === 'home'))
+                        return;
+                    if (!!(__VLS_ctx.activeView === 'dataManagement'))
+                        return;
+                    if (!!(__VLS_ctx.activeView === 'settings'))
+                        return;
+                    if (!!(__VLS_ctx.activeView === 'logs'))
+                        return;
+                    if (!!(__VLS_ctx.activeView === 'speech'))
+                        return;
+                    if (!!(__VLS_ctx.activeView === 'translation'))
+                        return;
+                    if (!!(__VLS_ctx.activeView === 'sessions'))
+                        return;
+                    if (!!(__VLS_ctx.activeView === 'tasks'))
+                        return;
+                    if (!!(__VLS_ctx.activeView === 'notifications'))
+                        return;
+                    if (!!(__VLS_ctx.activeView === 'prompts'))
+                        return;
+                    if (!!(__VLS_ctx.activeView === 'apiStatus'))
+                        return;
+                    if (!!(__VLS_ctx.activeView === 'assets'))
+                        return;
+                    if (!!(__VLS_ctx.activeView === 'favorites'))
+                        return;
+                    if (!!(__VLS_ctx.activeView === 'diagnostics'))
+                        return;
+                    if (!!(__VLS_ctx.activeView === 'exports'))
+                        return;
+                    if (!!(__VLS_ctx.activeView === 'imageHistory'))
+                        return;
+                    if (!!(__VLS_ctx.activeView === 'ttsHistory'))
+                        return;
+                    if (!(__VLS_ctx.activeProvider === 'gemini'))
+                        return;
+                    __VLS_ctx.geminiMode = 'code';
+                } },
+            ...{ class: ({ active: __VLS_ctx.geminiMode === 'code' }) },
+        });
+        __VLS_asFunctionalElement(__VLS_intrinsicElements.button, __VLS_intrinsicElements.button)({
+            ...{ onClick: (...[$event]) => {
+                    if (!!(__VLS_ctx.activeView === 'home'))
+                        return;
+                    if (!!(__VLS_ctx.activeView === 'dataManagement'))
+                        return;
+                    if (!!(__VLS_ctx.activeView === 'settings'))
+                        return;
+                    if (!!(__VLS_ctx.activeView === 'logs'))
+                        return;
+                    if (!!(__VLS_ctx.activeView === 'speech'))
+                        return;
+                    if (!!(__VLS_ctx.activeView === 'translation'))
+                        return;
+                    if (!!(__VLS_ctx.activeView === 'sessions'))
+                        return;
+                    if (!!(__VLS_ctx.activeView === 'tasks'))
+                        return;
+                    if (!!(__VLS_ctx.activeView === 'notifications'))
+                        return;
+                    if (!!(__VLS_ctx.activeView === 'prompts'))
+                        return;
+                    if (!!(__VLS_ctx.activeView === 'apiStatus'))
+                        return;
+                    if (!!(__VLS_ctx.activeView === 'assets'))
+                        return;
+                    if (!!(__VLS_ctx.activeView === 'favorites'))
+                        return;
+                    if (!!(__VLS_ctx.activeView === 'diagnostics'))
+                        return;
+                    if (!!(__VLS_ctx.activeView === 'exports'))
+                        return;
+                    if (!!(__VLS_ctx.activeView === 'imageHistory'))
+                        return;
+                    if (!!(__VLS_ctx.activeView === 'ttsHistory'))
+                        return;
+                    if (!(__VLS_ctx.activeProvider === 'gemini'))
+                        return;
+                    __VLS_ctx.geminiMode = 'image';
+                } },
+            ...{ class: ({ active: __VLS_ctx.geminiMode === 'image' }) },
+        });
+        (__VLS_ctx.isGeminiImageAvailable ? __VLS_ctx.$t("chat.geminiModeImage") : '图片提示词');
+    }
+    if (__VLS_ctx.activeProvider === 'gemini') {
+        __VLS_asFunctionalElement(__VLS_intrinsicElements.div, __VLS_intrinsicElements.div)({
+            ...{ class: "custom-dropdown-container" },
+            ...{ style: {} },
+        });
+        __VLS_asFunctionalElement(__VLS_intrinsicElements.button, __VLS_intrinsicElements.button)({
+            ...{ onClick: (...[$event]) => {
+                    if (!!(__VLS_ctx.activeView === 'home'))
+                        return;
+                    if (!!(__VLS_ctx.activeView === 'dataManagement'))
+                        return;
+                    if (!!(__VLS_ctx.activeView === 'settings'))
+                        return;
+                    if (!!(__VLS_ctx.activeView === 'logs'))
+                        return;
+                    if (!!(__VLS_ctx.activeView === 'speech'))
+                        return;
+                    if (!!(__VLS_ctx.activeView === 'translation'))
+                        return;
+                    if (!!(__VLS_ctx.activeView === 'sessions'))
+                        return;
+                    if (!!(__VLS_ctx.activeView === 'tasks'))
+                        return;
+                    if (!!(__VLS_ctx.activeView === 'notifications'))
+                        return;
+                    if (!!(__VLS_ctx.activeView === 'prompts'))
+                        return;
+                    if (!!(__VLS_ctx.activeView === 'apiStatus'))
+                        return;
+                    if (!!(__VLS_ctx.activeView === 'assets'))
+                        return;
+                    if (!!(__VLS_ctx.activeView === 'favorites'))
+                        return;
+                    if (!!(__VLS_ctx.activeView === 'diagnostics'))
+                        return;
+                    if (!!(__VLS_ctx.activeView === 'exports'))
+                        return;
+                    if (!!(__VLS_ctx.activeView === 'imageHistory'))
+                        return;
+                    if (!!(__VLS_ctx.activeView === 'ttsHistory'))
+                        return;
+                    if (!(__VLS_ctx.activeProvider === 'gemini'))
+                        return;
+                    __VLS_ctx.showModelDropdown = !__VLS_ctx.showModelDropdown;
+                } },
+            ...{ class: "custom-model-trigger" },
+            title: "选择运行模型",
+        });
+        const __VLS_60 = {}.Cpu;
+        /** @type {[typeof __VLS_components.Cpu, ]} */ ;
+        // @ts-ignore
+        const __VLS_61 = __VLS_asFunctionalComponent(__VLS_60, new __VLS_60({
+            size: (13),
+            ...{ style: {} },
+        }));
+        const __VLS_62 = __VLS_61({
+            size: (13),
+            ...{ style: {} },
+        }, ...__VLS_functionalComponentArgsRest(__VLS_61));
+        __VLS_asFunctionalElement(__VLS_intrinsicElements.span, __VLS_intrinsicElements.span)({
+            ...{ class: "trigger-text" },
+        });
+        (__VLS_ctx.selectedGeminiModel === 'auto' ? '智能自动路由' : __VLS_ctx.formatModelInfo(__VLS_ctx.selectedGeminiModel).displayName);
+        const __VLS_64 = {}.ChevronDown;
+        /** @type {[typeof __VLS_components.ChevronDown, ]} */ ;
+        // @ts-ignore
+        const __VLS_65 = __VLS_asFunctionalComponent(__VLS_64, new __VLS_64({
+            size: (12),
+            ...{ style: {} },
+        }));
+        const __VLS_66 = __VLS_65({
+            size: (12),
+            ...{ style: {} },
+        }, ...__VLS_functionalComponentArgsRest(__VLS_65));
+        if (__VLS_ctx.showModelDropdown) {
+            __VLS_asFunctionalElement(__VLS_intrinsicElements.div, __VLS_intrinsicElements.div)({
+                ...{ onClick: () => { } },
+                ...{ class: "custom-model-dropdown" },
+            });
+            __VLS_asFunctionalElement(__VLS_intrinsicElements.div, __VLS_intrinsicElements.div)({
+                ...{ class: "dropdown-header" },
+            });
+            __VLS_asFunctionalElement(__VLS_intrinsicElements.div, __VLS_intrinsicElements.div)({
+                ...{ onClick: (...[$event]) => {
+                        if (!!(__VLS_ctx.activeView === 'home'))
+                            return;
+                        if (!!(__VLS_ctx.activeView === 'dataManagement'))
+                            return;
+                        if (!!(__VLS_ctx.activeView === 'settings'))
+                            return;
+                        if (!!(__VLS_ctx.activeView === 'logs'))
+                            return;
+                        if (!!(__VLS_ctx.activeView === 'speech'))
+                            return;
+                        if (!!(__VLS_ctx.activeView === 'translation'))
+                            return;
+                        if (!!(__VLS_ctx.activeView === 'sessions'))
+                            return;
+                        if (!!(__VLS_ctx.activeView === 'tasks'))
+                            return;
+                        if (!!(__VLS_ctx.activeView === 'notifications'))
+                            return;
+                        if (!!(__VLS_ctx.activeView === 'prompts'))
+                            return;
+                        if (!!(__VLS_ctx.activeView === 'apiStatus'))
+                            return;
+                        if (!!(__VLS_ctx.activeView === 'assets'))
+                            return;
+                        if (!!(__VLS_ctx.activeView === 'favorites'))
+                            return;
+                        if (!!(__VLS_ctx.activeView === 'diagnostics'))
+                            return;
+                        if (!!(__VLS_ctx.activeView === 'exports'))
+                            return;
+                        if (!!(__VLS_ctx.activeView === 'imageHistory'))
+                            return;
+                        if (!!(__VLS_ctx.activeView === 'ttsHistory'))
+                            return;
+                        if (!(__VLS_ctx.activeProvider === 'gemini'))
+                            return;
+                        if (!(__VLS_ctx.showModelDropdown))
+                            return;
+                        __VLS_ctx.selectModel('auto');
+                    } },
+                ...{ class: "custom-model-item" },
+                ...{ class: ({ active: __VLS_ctx.selectedGeminiModel === 'auto' }) },
+            });
+            __VLS_asFunctionalElement(__VLS_intrinsicElements.div, __VLS_intrinsicElements.div)({
+                ...{ class: "model-item-main" },
+            });
+            __VLS_asFunctionalElement(__VLS_intrinsicElements.strong, __VLS_intrinsicElements.strong)({
+                ...{ class: "model-name" },
+            });
+            __VLS_asFunctionalElement(__VLS_intrinsicElements.span, __VLS_intrinsicElements.span)({
+                ...{ class: "model-badge badge-auto" },
+            });
+            __VLS_asFunctionalElement(__VLS_intrinsicElements.div, __VLS_intrinsicElements.div)({
+                ...{ class: "model-desc" },
+            });
+            if (__VLS_ctx.availableGeminiModels.length) {
+                __VLS_asFunctionalElement(__VLS_intrinsicElements.div, __VLS_intrinsicElements.div)({
+                    ...{ class: "dropdown-divider" },
+                });
+            }
+            for (const [model] of __VLS_getVForSourceType((__VLS_ctx.availableGeminiModels))) {
+                __VLS_asFunctionalElement(__VLS_intrinsicElements.div, __VLS_intrinsicElements.div)({
+                    ...{ onClick: (...[$event]) => {
+                            if (!!(__VLS_ctx.activeView === 'home'))
+                                return;
+                            if (!!(__VLS_ctx.activeView === 'dataManagement'))
+                                return;
+                            if (!!(__VLS_ctx.activeView === 'settings'))
+                                return;
+                            if (!!(__VLS_ctx.activeView === 'logs'))
+                                return;
+                            if (!!(__VLS_ctx.activeView === 'speech'))
+                                return;
+                            if (!!(__VLS_ctx.activeView === 'translation'))
+                                return;
+                            if (!!(__VLS_ctx.activeView === 'sessions'))
+                                return;
+                            if (!!(__VLS_ctx.activeView === 'tasks'))
+                                return;
+                            if (!!(__VLS_ctx.activeView === 'notifications'))
+                                return;
+                            if (!!(__VLS_ctx.activeView === 'prompts'))
+                                return;
+                            if (!!(__VLS_ctx.activeView === 'apiStatus'))
+                                return;
+                            if (!!(__VLS_ctx.activeView === 'assets'))
+                                return;
+                            if (!!(__VLS_ctx.activeView === 'favorites'))
+                                return;
+                            if (!!(__VLS_ctx.activeView === 'diagnostics'))
+                                return;
+                            if (!!(__VLS_ctx.activeView === 'exports'))
+                                return;
+                            if (!!(__VLS_ctx.activeView === 'imageHistory'))
+                                return;
+                            if (!!(__VLS_ctx.activeView === 'ttsHistory'))
+                                return;
+                            if (!(__VLS_ctx.activeProvider === 'gemini'))
+                                return;
+                            if (!(__VLS_ctx.showModelDropdown))
+                                return;
+                            __VLS_ctx.selectModel(model.id);
+                        } },
+                    key: (model.id),
+                    ...{ class: "custom-model-item" },
+                    ...{ class: ({ active: __VLS_ctx.selectedGeminiModel === model.id }) },
+                });
+                __VLS_asFunctionalElement(__VLS_intrinsicElements.div, __VLS_intrinsicElements.div)({
+                    ...{ class: "model-item-main" },
+                });
+                __VLS_asFunctionalElement(__VLS_intrinsicElements.strong, __VLS_intrinsicElements.strong)({
+                    ...{ class: "model-name" },
+                });
+                (__VLS_ctx.formatModelInfo(model.id).displayName);
+                __VLS_asFunctionalElement(__VLS_intrinsicElements.span, __VLS_intrinsicElements.span)({
+                    ...{ class: "model-badge" },
+                    ...{ class: (__VLS_ctx.formatModelInfo(model.id).badgeClass) },
+                });
+                (__VLS_ctx.formatModelInfo(model.id).badgeText);
+                __VLS_asFunctionalElement(__VLS_intrinsicElements.div, __VLS_intrinsicElements.div)({
+                    ...{ class: "model-desc" },
+                });
+                (__VLS_ctx.formatModelInfo(model.id).description);
+            }
+            if (!__VLS_ctx.availableGeminiModels.length) {
+                __VLS_asFunctionalElement(__VLS_intrinsicElements.div, __VLS_intrinsicElements.div)({
+                    ...{ class: "empty-dropdown-models" },
+                });
+            }
+        }
+    }
+    if (__VLS_ctx.activeProvider === 'gemini') {
+        __VLS_asFunctionalElement(__VLS_intrinsicElements.button, __VLS_intrinsicElements.button)({
+            ...{ onClick: (...[$event]) => {
+                    if (!!(__VLS_ctx.activeView === 'home'))
+                        return;
+                    if (!!(__VLS_ctx.activeView === 'dataManagement'))
+                        return;
+                    if (!!(__VLS_ctx.activeView === 'settings'))
+                        return;
+                    if (!!(__VLS_ctx.activeView === 'logs'))
+                        return;
+                    if (!!(__VLS_ctx.activeView === 'speech'))
+                        return;
+                    if (!!(__VLS_ctx.activeView === 'translation'))
+                        return;
+                    if (!!(__VLS_ctx.activeView === 'sessions'))
+                        return;
+                    if (!!(__VLS_ctx.activeView === 'tasks'))
+                        return;
+                    if (!!(__VLS_ctx.activeView === 'notifications'))
+                        return;
+                    if (!!(__VLS_ctx.activeView === 'prompts'))
+                        return;
+                    if (!!(__VLS_ctx.activeView === 'apiStatus'))
+                        return;
+                    if (!!(__VLS_ctx.activeView === 'assets'))
+                        return;
+                    if (!!(__VLS_ctx.activeView === 'favorites'))
+                        return;
+                    if (!!(__VLS_ctx.activeView === 'diagnostics'))
+                        return;
+                    if (!!(__VLS_ctx.activeView === 'exports'))
+                        return;
+                    if (!!(__VLS_ctx.activeView === 'imageHistory'))
+                        return;
+                    if (!!(__VLS_ctx.activeView === 'ttsHistory'))
+                        return;
+                    if (!(__VLS_ctx.activeProvider === 'gemini'))
+                        return;
+                    __VLS_ctx.handleGeminiProbe(false);
+                } },
+            ...{ class: "icon-btn" },
+            title: "检测可用模型",
+            disabled: (__VLS_ctx.geminiProbeLoading),
+            ...{ style: {} },
+        });
+        const __VLS_68 = {}.RefreshCw;
+        /** @type {[typeof __VLS_components.RefreshCw, ]} */ ;
+        // @ts-ignore
+        const __VLS_69 = __VLS_asFunctionalComponent(__VLS_68, new __VLS_68({
+            size: (13),
+            ...{ class: ({ 'animate-spin': __VLS_ctx.geminiProbeLoading }) },
+        }));
+        const __VLS_70 = __VLS_69({
+            size: (13),
+            ...{ class: ({ 'animate-spin': __VLS_ctx.geminiProbeLoading }) },
+        }, ...__VLS_functionalComponentArgsRest(__VLS_69));
+    }
     __VLS_asFunctionalElement(__VLS_intrinsicElements.select, __VLS_intrinsicElements.select)({
         ...{ onChange: (...[$event]) => {
                 if (!!(__VLS_ctx.activeView === 'home'))
@@ -4330,15 +5736,15 @@ else {
         ...{ class: "icon-btn" },
         title: (__VLS_ctx.$t('chat.refreshHistory')),
     });
-    const __VLS_56 = {}.RefreshCw;
+    const __VLS_72 = {}.RefreshCw;
     /** @type {[typeof __VLS_components.RefreshCw, ]} */ ;
     // @ts-ignore
-    const __VLS_57 = __VLS_asFunctionalComponent(__VLS_56, new __VLS_56({
+    const __VLS_73 = __VLS_asFunctionalComponent(__VLS_72, new __VLS_72({
         size: (15),
     }));
-    const __VLS_58 = __VLS_57({
+    const __VLS_74 = __VLS_73({
         size: (15),
-    }, ...__VLS_functionalComponentArgsRest(__VLS_57));
+    }, ...__VLS_functionalComponentArgsRest(__VLS_73));
     __VLS_asFunctionalElement(__VLS_intrinsicElements.div, __VLS_intrinsicElements.div)({
         ...{ class: "chat-viewport" },
         ref: "chatContainer",
@@ -4407,15 +5813,15 @@ else {
             ...{ class: "message-favorite" },
             title: (__VLS_ctx.$t('chat.favoriteMsg')),
         });
-        const __VLS_60 = {}.Star;
+        const __VLS_76 = {}.Star;
         /** @type {[typeof __VLS_components.Star, ]} */ ;
         // @ts-ignore
-        const __VLS_61 = __VLS_asFunctionalComponent(__VLS_60, new __VLS_60({
+        const __VLS_77 = __VLS_asFunctionalComponent(__VLS_76, new __VLS_76({
             size: (13),
         }));
-        const __VLS_62 = __VLS_61({
+        const __VLS_78 = __VLS_77({
             size: (13),
-        }, ...__VLS_functionalComponentArgsRest(__VLS_61));
+        }, ...__VLS_functionalComponentArgsRest(__VLS_77));
         __VLS_asFunctionalElement(__VLS_intrinsicElements.button, __VLS_intrinsicElements.button)({
             ...{ onClick: (...[$event]) => {
                     if (!!(__VLS_ctx.activeView === 'home'))
@@ -4457,14 +5863,14 @@ else {
             ...{ class: "message-copy" },
             title: "复制内容",
         });
-        const __VLS_64 = ((__VLS_ctx.copiedIndex === i ? __VLS_ctx.Check : __VLS_ctx.Copy));
+        const __VLS_80 = ((__VLS_ctx.copiedIndex === i ? __VLS_ctx.Check : __VLS_ctx.Copy));
         // @ts-ignore
-        const __VLS_65 = __VLS_asFunctionalComponent(__VLS_64, new __VLS_64({
+        const __VLS_81 = __VLS_asFunctionalComponent(__VLS_80, new __VLS_80({
             size: (13),
         }));
-        const __VLS_66 = __VLS_65({
+        const __VLS_82 = __VLS_81({
             size: (13),
-        }, ...__VLS_functionalComponentArgsRest(__VLS_65));
+        }, ...__VLS_functionalComponentArgsRest(__VLS_81));
         __VLS_asFunctionalElement(__VLS_intrinsicElements.div, __VLS_intrinsicElements.div)({
             ...{ class: "message-text-wrapper" },
         });
@@ -4516,31 +5922,31 @@ else {
                         } },
                     ...{ class: "think-header" },
                 });
-                const __VLS_68 = {}.Cpu;
+                const __VLS_84 = {}.Cpu;
                 /** @type {[typeof __VLS_components.Cpu, ]} */ ;
                 // @ts-ignore
-                const __VLS_69 = __VLS_asFunctionalComponent(__VLS_68, new __VLS_68({
+                const __VLS_85 = __VLS_asFunctionalComponent(__VLS_84, new __VLS_84({
                     size: (14),
                     ...{ class: "think-icon" },
                 }));
-                const __VLS_70 = __VLS_69({
+                const __VLS_86 = __VLS_85({
                     size: (14),
                     ...{ class: "think-icon" },
-                }, ...__VLS_functionalComponentArgsRest(__VLS_69));
+                }, ...__VLS_functionalComponentArgsRest(__VLS_85));
                 __VLS_asFunctionalElement(__VLS_intrinsicElements.span, __VLS_intrinsicElements.span)({
                     ...{ class: "think-title" },
                 });
                 (__VLS_ctx.$t("chat.thinkTitle"));
-                const __VLS_72 = ((__VLS_ctx.expandedThinks[__VLS_ctx.activeProvider + '-' + __VLS_ctx.activeSessionIds[__VLS_ctx.activeProvider] + '-' + i] ? __VLS_ctx.ChevronUp : __VLS_ctx.ChevronDown));
+                const __VLS_88 = ((__VLS_ctx.expandedThinks[__VLS_ctx.activeProvider + '-' + __VLS_ctx.activeSessionIds[__VLS_ctx.activeProvider] + '-' + i] ? __VLS_ctx.ChevronUp : __VLS_ctx.ChevronDown));
                 // @ts-ignore
-                const __VLS_73 = __VLS_asFunctionalComponent(__VLS_72, new __VLS_72({
+                const __VLS_89 = __VLS_asFunctionalComponent(__VLS_88, new __VLS_88({
                     size: (14),
                     ...{ class: "think-chevron" },
                 }));
-                const __VLS_74 = __VLS_73({
+                const __VLS_90 = __VLS_89({
                     size: (14),
                     ...{ class: "think-chevron" },
-                }, ...__VLS_functionalComponentArgsRest(__VLS_73));
+                }, ...__VLS_functionalComponentArgsRest(__VLS_89));
                 if (__VLS_ctx.expandedThinks[__VLS_ctx.activeProvider + '-' + __VLS_ctx.activeSessionIds[__VLS_ctx.activeProvider] + '-' + i]) {
                     __VLS_asFunctionalElement(__VLS_intrinsicElements.div, __VLS_intrinsicElements.div)({
                         ...{ class: "think-body" },
@@ -4552,7 +5958,7 @@ else {
                 __VLS_asFunctionalElement(__VLS_intrinsicElements.div, __VLS_intrinsicElements.div)({
                     ...{ class: "text-body" },
                 });
-                (block.content);
+                __VLS_asFunctionalDirective(__VLS_directives.vHtml)(null, { ...__VLS_directiveBindingRestFields, value: (__VLS_ctx.renderMarkdown(block.content)) }, null, null);
             }
         }
         for (const [m, j] of __VLS_getVForSourceType(((msg.media || []).filter(x => x.type === 'image')))) {
@@ -4587,47 +5993,408 @@ else {
         __VLS_asFunctionalElement(__VLS_intrinsicElements.span, __VLS_intrinsicElements.span)({});
     }
     __VLS_asFunctionalElement(__VLS_intrinsicElements.div, __VLS_intrinsicElements.div)({
-        ...{ class: "input-container" },
+        ...{ onMousedown: (...[$event]) => {
+                if (!!(__VLS_ctx.activeView === 'home'))
+                    return;
+                if (!!(__VLS_ctx.activeView === 'dataManagement'))
+                    return;
+                if (!!(__VLS_ctx.activeView === 'settings'))
+                    return;
+                if (!!(__VLS_ctx.activeView === 'logs'))
+                    return;
+                if (!!(__VLS_ctx.activeView === 'speech'))
+                    return;
+                if (!!(__VLS_ctx.activeView === 'translation'))
+                    return;
+                if (!!(__VLS_ctx.activeView === 'sessions'))
+                    return;
+                if (!!(__VLS_ctx.activeView === 'tasks'))
+                    return;
+                if (!!(__VLS_ctx.activeView === 'notifications'))
+                    return;
+                if (!!(__VLS_ctx.activeView === 'prompts'))
+                    return;
+                if (!!(__VLS_ctx.activeView === 'apiStatus'))
+                    return;
+                if (!!(__VLS_ctx.activeView === 'assets'))
+                    return;
+                if (!!(__VLS_ctx.activeView === 'favorites'))
+                    return;
+                if (!!(__VLS_ctx.activeView === 'diagnostics'))
+                    return;
+                if (!!(__VLS_ctx.activeView === 'exports'))
+                    return;
+                if (!!(__VLS_ctx.activeView === 'imageHistory'))
+                    return;
+                if (!!(__VLS_ctx.activeView === 'ttsHistory'))
+                    return;
+                __VLS_ctx.startResize('chatInput', $event);
+            } },
+        ...{ onDblclick: (...[$event]) => {
+                if (!!(__VLS_ctx.activeView === 'home'))
+                    return;
+                if (!!(__VLS_ctx.activeView === 'dataManagement'))
+                    return;
+                if (!!(__VLS_ctx.activeView === 'settings'))
+                    return;
+                if (!!(__VLS_ctx.activeView === 'logs'))
+                    return;
+                if (!!(__VLS_ctx.activeView === 'speech'))
+                    return;
+                if (!!(__VLS_ctx.activeView === 'translation'))
+                    return;
+                if (!!(__VLS_ctx.activeView === 'sessions'))
+                    return;
+                if (!!(__VLS_ctx.activeView === 'tasks'))
+                    return;
+                if (!!(__VLS_ctx.activeView === 'notifications'))
+                    return;
+                if (!!(__VLS_ctx.activeView === 'prompts'))
+                    return;
+                if (!!(__VLS_ctx.activeView === 'apiStatus'))
+                    return;
+                if (!!(__VLS_ctx.activeView === 'assets'))
+                    return;
+                if (!!(__VLS_ctx.activeView === 'favorites'))
+                    return;
+                if (!!(__VLS_ctx.activeView === 'diagnostics'))
+                    return;
+                if (!!(__VLS_ctx.activeView === 'exports'))
+                    return;
+                if (!!(__VLS_ctx.activeView === 'imageHistory'))
+                    return;
+                if (!!(__VLS_ctx.activeView === 'ttsHistory'))
+                    return;
+                __VLS_ctx.chatInputHeight = null;
+                __VLS_ctx.persistLayout();
+                ;
+            } },
+        ...{ class: "horizontal-resizer chat-resizer glass-resizer" },
+        title: "拖动调整高度，双击恢复默认",
     });
+    __VLS_asFunctionalElement(__VLS_intrinsicElements.div, __VLS_intrinsicElements.div)({
+        ...{ class: "input-container" },
+        ...{ style: (__VLS_ctx.chatInputHeight ? { height: `${__VLS_ctx.chatInputHeight}px` } : {}) },
+    });
+    __VLS_asFunctionalElement(__VLS_intrinsicElements.input)({
+        ...{ onChange: (__VLS_ctx.handleFileUpload) },
+        type: "file",
+        ref: "fileInput",
+        accept: "image/*,audio/*,.pdf,.txt,.md",
+        ...{ style: {} },
+    });
+    /** @type {typeof __VLS_ctx.fileInput} */ ;
+    __VLS_asFunctionalElement(__VLS_intrinsicElements.div, __VLS_intrinsicElements.div)({
+        ...{ class: "chat-input-row" },
+    });
+    if (__VLS_ctx.activeProvider === 'gemini' && __VLS_ctx.documents.length > 0) {
+        __VLS_asFunctionalElement(__VLS_intrinsicElements.div, __VLS_intrinsicElements.div)({
+            ...{ class: "rag-document-selector-sidebar" },
+        });
+        __VLS_asFunctionalElement(__VLS_intrinsicElements.div, __VLS_intrinsicElements.div)({
+            ...{ class: "rag-sidebar-header" },
+        });
+        __VLS_asFunctionalElement(__VLS_intrinsicElements.div, __VLS_intrinsicElements.div)({
+            ...{ class: "rag-title-container" },
+        });
+        const __VLS_92 = {}.BookOpen;
+        /** @type {[typeof __VLS_components.BookOpen, ]} */ ;
+        // @ts-ignore
+        const __VLS_93 = __VLS_asFunctionalComponent(__VLS_92, new __VLS_92({
+            size: (12),
+            ...{ style: {} },
+        }));
+        const __VLS_94 = __VLS_93({
+            size: (12),
+            ...{ style: {} },
+        }, ...__VLS_functionalComponentArgsRest(__VLS_93));
+        __VLS_asFunctionalElement(__VLS_intrinsicElements.span, __VLS_intrinsicElements.span)({});
+        __VLS_asFunctionalElement(__VLS_intrinsicElements.div, __VLS_intrinsicElements.div)({
+            ...{ class: "rag-actions-container" },
+        });
+        __VLS_asFunctionalElement(__VLS_intrinsicElements.span, __VLS_intrinsicElements.span)({
+            ...{ onClick: (...[$event]) => {
+                    if (!!(__VLS_ctx.activeView === 'home'))
+                        return;
+                    if (!!(__VLS_ctx.activeView === 'dataManagement'))
+                        return;
+                    if (!!(__VLS_ctx.activeView === 'settings'))
+                        return;
+                    if (!!(__VLS_ctx.activeView === 'logs'))
+                        return;
+                    if (!!(__VLS_ctx.activeView === 'speech'))
+                        return;
+                    if (!!(__VLS_ctx.activeView === 'translation'))
+                        return;
+                    if (!!(__VLS_ctx.activeView === 'sessions'))
+                        return;
+                    if (!!(__VLS_ctx.activeView === 'tasks'))
+                        return;
+                    if (!!(__VLS_ctx.activeView === 'notifications'))
+                        return;
+                    if (!!(__VLS_ctx.activeView === 'prompts'))
+                        return;
+                    if (!!(__VLS_ctx.activeView === 'apiStatus'))
+                        return;
+                    if (!!(__VLS_ctx.activeView === 'assets'))
+                        return;
+                    if (!!(__VLS_ctx.activeView === 'favorites'))
+                        return;
+                    if (!!(__VLS_ctx.activeView === 'diagnostics'))
+                        return;
+                    if (!!(__VLS_ctx.activeView === 'exports'))
+                        return;
+                    if (!!(__VLS_ctx.activeView === 'imageHistory'))
+                        return;
+                    if (!!(__VLS_ctx.activeView === 'ttsHistory'))
+                        return;
+                    if (!(__VLS_ctx.activeProvider === 'gemini' && __VLS_ctx.documents.length > 0))
+                        return;
+                    __VLS_ctx.selectedDocIds = __VLS_ctx.documents.map(d => d.id);
+                } },
+            ...{ class: "rag-action-link select-all" },
+        });
+        __VLS_asFunctionalElement(__VLS_intrinsicElements.span, __VLS_intrinsicElements.span)({
+            ...{ onClick: (...[$event]) => {
+                    if (!!(__VLS_ctx.activeView === 'home'))
+                        return;
+                    if (!!(__VLS_ctx.activeView === 'dataManagement'))
+                        return;
+                    if (!!(__VLS_ctx.activeView === 'settings'))
+                        return;
+                    if (!!(__VLS_ctx.activeView === 'logs'))
+                        return;
+                    if (!!(__VLS_ctx.activeView === 'speech'))
+                        return;
+                    if (!!(__VLS_ctx.activeView === 'translation'))
+                        return;
+                    if (!!(__VLS_ctx.activeView === 'sessions'))
+                        return;
+                    if (!!(__VLS_ctx.activeView === 'tasks'))
+                        return;
+                    if (!!(__VLS_ctx.activeView === 'notifications'))
+                        return;
+                    if (!!(__VLS_ctx.activeView === 'prompts'))
+                        return;
+                    if (!!(__VLS_ctx.activeView === 'apiStatus'))
+                        return;
+                    if (!!(__VLS_ctx.activeView === 'assets'))
+                        return;
+                    if (!!(__VLS_ctx.activeView === 'favorites'))
+                        return;
+                    if (!!(__VLS_ctx.activeView === 'diagnostics'))
+                        return;
+                    if (!!(__VLS_ctx.activeView === 'exports'))
+                        return;
+                    if (!!(__VLS_ctx.activeView === 'imageHistory'))
+                        return;
+                    if (!!(__VLS_ctx.activeView === 'ttsHistory'))
+                        return;
+                    if (!(__VLS_ctx.activeProvider === 'gemini' && __VLS_ctx.documents.length > 0))
+                        return;
+                    __VLS_ctx.selectedDocIds = [];
+                } },
+            ...{ class: "rag-action-link clear-all" },
+        });
+        __VLS_asFunctionalElement(__VLS_intrinsicElements.div, __VLS_intrinsicElements.div)({
+            ...{ class: "rag-sidebar-list" },
+        });
+        for (const [doc] of __VLS_getVForSourceType((__VLS_ctx.documents))) {
+            __VLS_asFunctionalElement(__VLS_intrinsicElements.label, __VLS_intrinsicElements.label)({
+                key: (doc.id),
+                ...{ class: "rag-doc-sidebar-tag" },
+                ...{ class: ({ active: __VLS_ctx.selectedDocIds.includes(doc.id) }) },
+            });
+            __VLS_asFunctionalElement(__VLS_intrinsicElements.input)({
+                type: "checkbox",
+                value: (doc.id),
+                ...{ style: {} },
+            });
+            (__VLS_ctx.selectedDocIds);
+            const __VLS_96 = {}.FileText;
+            /** @type {[typeof __VLS_components.FileText, ]} */ ;
+            // @ts-ignore
+            const __VLS_97 = __VLS_asFunctionalComponent(__VLS_96, new __VLS_96({
+                size: (11),
+            }));
+            const __VLS_98 = __VLS_97({
+                size: (11),
+            }, ...__VLS_functionalComponentArgsRest(__VLS_97));
+            __VLS_asFunctionalElement(__VLS_intrinsicElements.span, __VLS_intrinsicElements.span)({
+                ...{ class: "rag-doc-name" },
+                title: (doc.name),
+            });
+            (doc.name);
+        }
+    }
+    __VLS_asFunctionalElement(__VLS_intrinsicElements.div, __VLS_intrinsicElements.div)({
+        ...{ class: "chat-input-main" },
+    });
+    if (__VLS_ctx.uploadedFiles.length > 0) {
+        __VLS_asFunctionalElement(__VLS_intrinsicElements.div, __VLS_intrinsicElements.div)({
+            ...{ class: "attachment-preview-list" },
+            ...{ style: {} },
+        });
+        for (const [file, idx] of __VLS_getVForSourceType((__VLS_ctx.uploadedFiles))) {
+            __VLS_asFunctionalElement(__VLS_intrinsicElements.div, __VLS_intrinsicElements.div)({
+                key: (idx),
+                ...{ class: "attachment-preview-card" },
+                ...{ style: {} },
+            });
+            if (file.type === 'image') {
+                __VLS_asFunctionalElement(__VLS_intrinsicElements.img)({
+                    src: (__VLS_ctx.mediaUrl(file.url)),
+                    ...{ style: {} },
+                });
+            }
+            else {
+                const __VLS_100 = {}.Volume2;
+                /** @type {[typeof __VLS_components.Volume2, ]} */ ;
+                // @ts-ignore
+                const __VLS_101 = __VLS_asFunctionalComponent(__VLS_100, new __VLS_100({
+                    size: (16),
+                    ...{ style: {} },
+                }));
+                const __VLS_102 = __VLS_101({
+                    size: (16),
+                    ...{ style: {} },
+                }, ...__VLS_functionalComponentArgsRest(__VLS_101));
+            }
+            __VLS_asFunctionalElement(__VLS_intrinsicElements.span, __VLS_intrinsicElements.span)({
+                ...{ style: {} },
+            });
+            (file.name);
+            __VLS_asFunctionalElement(__VLS_intrinsicElements.button, __VLS_intrinsicElements.button)({
+                ...{ onClick: (...[$event]) => {
+                        if (!!(__VLS_ctx.activeView === 'home'))
+                            return;
+                        if (!!(__VLS_ctx.activeView === 'dataManagement'))
+                            return;
+                        if (!!(__VLS_ctx.activeView === 'settings'))
+                            return;
+                        if (!!(__VLS_ctx.activeView === 'logs'))
+                            return;
+                        if (!!(__VLS_ctx.activeView === 'speech'))
+                            return;
+                        if (!!(__VLS_ctx.activeView === 'translation'))
+                            return;
+                        if (!!(__VLS_ctx.activeView === 'sessions'))
+                            return;
+                        if (!!(__VLS_ctx.activeView === 'tasks'))
+                            return;
+                        if (!!(__VLS_ctx.activeView === 'notifications'))
+                            return;
+                        if (!!(__VLS_ctx.activeView === 'prompts'))
+                            return;
+                        if (!!(__VLS_ctx.activeView === 'apiStatus'))
+                            return;
+                        if (!!(__VLS_ctx.activeView === 'assets'))
+                            return;
+                        if (!!(__VLS_ctx.activeView === 'favorites'))
+                            return;
+                        if (!!(__VLS_ctx.activeView === 'diagnostics'))
+                            return;
+                        if (!!(__VLS_ctx.activeView === 'exports'))
+                            return;
+                        if (!!(__VLS_ctx.activeView === 'imageHistory'))
+                            return;
+                        if (!!(__VLS_ctx.activeView === 'ttsHistory'))
+                            return;
+                        if (!(__VLS_ctx.uploadedFiles.length > 0))
+                            return;
+                        __VLS_ctx.removeUploadedFile(idx);
+                    } },
+                ...{ style: {} },
+                title: "移除",
+            });
+            const __VLS_104 = {}.X;
+            /** @type {[typeof __VLS_components.X, ]} */ ;
+            // @ts-ignore
+            const __VLS_105 = __VLS_asFunctionalComponent(__VLS_104, new __VLS_104({
+                size: (12),
+                ...{ style: {} },
+            }));
+            const __VLS_106 = __VLS_105({
+                size: (12),
+                ...{ style: {} },
+            }, ...__VLS_functionalComponentArgsRest(__VLS_105));
+        }
+    }
     __VLS_asFunctionalElement(__VLS_intrinsicElements.div, __VLS_intrinsicElements.div)({
         ...{ class: "input-wrapper" },
     });
+    if (__VLS_ctx.activeProvider === 'gemini') {
+        __VLS_asFunctionalElement(__VLS_intrinsicElements.button, __VLS_intrinsicElements.button)({
+            ...{ onClick: (__VLS_ctx.triggerFileUpload) },
+            ...{ class: "upload-attachment-btn" },
+            disabled: (__VLS_ctx.isUploading || __VLS_ctx.isThinking),
+            ...{ style: {} },
+            title: "上传图片或音频",
+        });
+        if (__VLS_ctx.isUploading) {
+            const __VLS_108 = {}.ImageIcon;
+            /** @type {[typeof __VLS_components.ImageIcon, ]} */ ;
+            // @ts-ignore
+            const __VLS_109 = __VLS_asFunctionalComponent(__VLS_108, new __VLS_108({
+                ...{ class: "animate-spin" },
+                size: (18),
+            }));
+            const __VLS_110 = __VLS_109({
+                ...{ class: "animate-spin" },
+                size: (18),
+            }, ...__VLS_functionalComponentArgsRest(__VLS_109));
+        }
+        else {
+            const __VLS_112 = {}.FolderOpen;
+            /** @type {[typeof __VLS_components.FolderOpen, ]} */ ;
+            // @ts-ignore
+            const __VLS_113 = __VLS_asFunctionalComponent(__VLS_112, new __VLS_112({
+                size: (18),
+            }));
+            const __VLS_114 = __VLS_113({
+                size: (18),
+            }, ...__VLS_functionalComponentArgsRest(__VLS_113));
+        }
+    }
     __VLS_asFunctionalElement(__VLS_intrinsicElements.textarea)({
         ...{ onKeydown: (__VLS_ctx.handleSend) },
+        ref: "textareaRef",
         value: (__VLS_ctx.inputText),
         placeholder: (__VLS_ctx.$t('chat.placeholder')),
+        ...{ class: ({ 'resizable-active': __VLS_ctx.chatInputHeight !== null }) },
     });
+    /** @type {typeof __VLS_ctx.textareaRef} */ ;
     if (__VLS_ctx.isThinking) {
         __VLS_asFunctionalElement(__VLS_intrinsicElements.button, __VLS_intrinsicElements.button)({
             ...{ onClick: (__VLS_ctx.handleStop) },
             ...{ class: "stop-btn" },
             title: (__VLS_ctx.$t('chat.stopGeneration')),
         });
-        const __VLS_76 = {}.Square;
+        const __VLS_116 = {}.Square;
         /** @type {[typeof __VLS_components.Square, ]} */ ;
         // @ts-ignore
-        const __VLS_77 = __VLS_asFunctionalComponent(__VLS_76, new __VLS_76({
+        const __VLS_117 = __VLS_asFunctionalComponent(__VLS_116, new __VLS_116({
             size: (16),
         }));
-        const __VLS_78 = __VLS_77({
+        const __VLS_118 = __VLS_117({
             size: (16),
-        }, ...__VLS_functionalComponentArgsRest(__VLS_77));
+        }, ...__VLS_functionalComponentArgsRest(__VLS_117));
     }
     else {
         __VLS_asFunctionalElement(__VLS_intrinsicElements.button, __VLS_intrinsicElements.button)({
             ...{ onClick: (__VLS_ctx.handleSend) },
             ...{ class: "send-btn" },
-            disabled: (!__VLS_ctx.inputText.trim()),
+            disabled: (!__VLS_ctx.inputText.trim() && __VLS_ctx.uploadedFiles.length === 0),
         });
-        const __VLS_80 = {}.Send;
+        const __VLS_120 = {}.Send;
         /** @type {[typeof __VLS_components.Send, ]} */ ;
         // @ts-ignore
-        const __VLS_81 = __VLS_asFunctionalComponent(__VLS_80, new __VLS_80({
+        const __VLS_121 = __VLS_asFunctionalComponent(__VLS_120, new __VLS_120({
             size: (18),
         }));
-        const __VLS_82 = __VLS_81({
+        const __VLS_122 = __VLS_121({
             size: (18),
-        }, ...__VLS_functionalComponentArgsRest(__VLS_81));
+        }, ...__VLS_functionalComponentArgsRest(__VLS_121));
     }
 }
 var __VLS_8;
@@ -4651,15 +6418,15 @@ if (__VLS_ctx.selectedAsset) {
         ...{ onClick: (__VLS_ctx.closeAssetDetail) },
         ...{ class: "icon-btn" },
     });
-    const __VLS_84 = {}.X;
+    const __VLS_124 = {}.X;
     /** @type {[typeof __VLS_components.X, ]} */ ;
     // @ts-ignore
-    const __VLS_85 = __VLS_asFunctionalComponent(__VLS_84, new __VLS_84({
+    const __VLS_125 = __VLS_asFunctionalComponent(__VLS_124, new __VLS_124({
         size: (15),
     }));
-    const __VLS_86 = __VLS_85({
+    const __VLS_126 = __VLS_125({
         size: (15),
-    }, ...__VLS_functionalComponentArgsRest(__VLS_85));
+    }, ...__VLS_functionalComponentArgsRest(__VLS_125));
     __VLS_asFunctionalElement(__VLS_intrinsicElements.div, __VLS_intrinsicElements.div)({
         ...{ class: "asset-modal-body" },
     });
@@ -4669,12 +6436,36 @@ if (__VLS_ctx.selectedAsset) {
             alt: "asset detail",
         });
     }
-    else {
+    else if (__VLS_ctx.selectedAsset.type === 'audio') {
         __VLS_asFunctionalElement(__VLS_intrinsicElements.audio)({
             src: (__VLS_ctx.mediaUrl(__VLS_ctx.selectedAsset.url)),
             controls: true,
             ...{ class: "audio-preview" },
         });
+    }
+    else if (__VLS_ctx.selectedAsset.type === 'document') {
+        __VLS_asFunctionalElement(__VLS_intrinsicElements.div, __VLS_intrinsicElements.div)({
+            ...{ style: {} },
+        });
+        const __VLS_128 = {}.FileText;
+        /** @type {[typeof __VLS_components.FileText, ]} */ ;
+        // @ts-ignore
+        const __VLS_129 = __VLS_asFunctionalComponent(__VLS_128, new __VLS_128({
+            size: (60),
+            ...{ style: {} },
+        }));
+        const __VLS_130 = __VLS_129({
+            size: (60),
+            ...{ style: {} },
+        }, ...__VLS_functionalComponentArgsRest(__VLS_129));
+        __VLS_asFunctionalElement(__VLS_intrinsicElements.span, __VLS_intrinsicElements.span)({
+            ...{ style: {} },
+        });
+        (__VLS_ctx.selectedAsset.title);
+        __VLS_asFunctionalElement(__VLS_intrinsicElements.span, __VLS_intrinsicElements.span)({
+            ...{ style: {} },
+        });
+        (__VLS_ctx.selectedAsset.subtitle);
     }
     __VLS_asFunctionalElement(__VLS_intrinsicElements.div, __VLS_intrinsicElements.div)({
         ...{ class: "asset-modal-actions" },
@@ -4705,6 +6496,8 @@ if (__VLS_ctx.selectedAsset) {
 /** @type {__VLS_StyleScopedClasses['home-copy']} */ ;
 /** @type {__VLS_StyleScopedClasses['home-actions']} */ ;
 /** @type {__VLS_StyleScopedClasses['preview-btn']} */ ;
+/** @type {__VLS_StyleScopedClasses['preview-btn']} */ ;
+/** @type {__VLS_StyleScopedClasses['secondary']} */ ;
 /** @type {__VLS_StyleScopedClasses['preview-btn']} */ ;
 /** @type {__VLS_StyleScopedClasses['secondary']} */ ;
 /** @type {__VLS_StyleScopedClasses['preview-btn']} */ ;
@@ -4761,6 +6554,16 @@ if (__VLS_ctx.selectedAsset) {
 /** @type {__VLS_StyleScopedClasses['preview-btn']} */ ;
 /** @type {__VLS_StyleScopedClasses['secondary']} */ ;
 /** @type {__VLS_StyleScopedClasses['save-settings-btn']} */ ;
+/** @type {__VLS_StyleScopedClasses['settings-card']} */ ;
+/** @type {__VLS_StyleScopedClasses['gemini-card']} */ ;
+/** @type {__VLS_StyleScopedClasses['settings-card-head']} */ ;
+/** @type {__VLS_StyleScopedClasses['settings-row']} */ ;
+/** @type {__VLS_StyleScopedClasses['preview-btn']} */ ;
+/** @type {__VLS_StyleScopedClasses['secondary']} */ ;
+/** @type {__VLS_StyleScopedClasses['save-settings-btn']} */ ;
+/** @type {__VLS_StyleScopedClasses['gemini-probe-section']} */ ;
+/** @type {__VLS_StyleScopedClasses['preview-btn']} */ ;
+/** @type {__VLS_StyleScopedClasses['secondary']} */ ;
 /** @type {__VLS_StyleScopedClasses['module-page']} */ ;
 /** @type {__VLS_StyleScopedClasses['logs-page']} */ ;
 /** @type {__VLS_StyleScopedClasses['module-header']} */ ;
@@ -4903,6 +6706,7 @@ if (__VLS_ctx.selectedAsset) {
 /** @type {__VLS_StyleScopedClasses['assets-tab-btn']} */ ;
 /** @type {__VLS_StyleScopedClasses['assets-tab-btn']} */ ;
 /** @type {__VLS_StyleScopedClasses['assets-tab-btn']} */ ;
+/** @type {__VLS_StyleScopedClasses['assets-tab-btn']} */ ;
 /** @type {__VLS_StyleScopedClasses['assets-batch-actions']} */ ;
 /** @type {__VLS_StyleScopedClasses['log-action']} */ ;
 /** @type {__VLS_StyleScopedClasses['batch-checkbox-input']} */ ;
@@ -4918,6 +6722,7 @@ if (__VLS_ctx.selectedAsset) {
 /** @type {__VLS_StyleScopedClasses['history-card-image']} */ ;
 /** @type {__VLS_StyleScopedClasses['asset-audio-box']} */ ;
 /** @type {__VLS_StyleScopedClasses['audio-preview']} */ ;
+/** @type {__VLS_StyleScopedClasses['asset-document-box']} */ ;
 /** @type {__VLS_StyleScopedClasses['history-card-meta']} */ ;
 /** @type {__VLS_StyleScopedClasses['page-controls']} */ ;
 /** @type {__VLS_StyleScopedClasses['log-action']} */ ;
@@ -4993,6 +6798,26 @@ if (__VLS_ctx.selectedAsset) {
 /** @type {__VLS_StyleScopedClasses['workspace-toolbar']} */ ;
 /** @type {__VLS_StyleScopedClasses['toolbar-title']} */ ;
 /** @type {__VLS_StyleScopedClasses['toolbar-actions']} */ ;
+/** @type {__VLS_StyleScopedClasses['gemini-mode-toggle']} */ ;
+/** @type {__VLS_StyleScopedClasses['custom-dropdown-container']} */ ;
+/** @type {__VLS_StyleScopedClasses['custom-model-trigger']} */ ;
+/** @type {__VLS_StyleScopedClasses['trigger-text']} */ ;
+/** @type {__VLS_StyleScopedClasses['custom-model-dropdown']} */ ;
+/** @type {__VLS_StyleScopedClasses['dropdown-header']} */ ;
+/** @type {__VLS_StyleScopedClasses['custom-model-item']} */ ;
+/** @type {__VLS_StyleScopedClasses['model-item-main']} */ ;
+/** @type {__VLS_StyleScopedClasses['model-name']} */ ;
+/** @type {__VLS_StyleScopedClasses['model-badge']} */ ;
+/** @type {__VLS_StyleScopedClasses['badge-auto']} */ ;
+/** @type {__VLS_StyleScopedClasses['model-desc']} */ ;
+/** @type {__VLS_StyleScopedClasses['dropdown-divider']} */ ;
+/** @type {__VLS_StyleScopedClasses['custom-model-item']} */ ;
+/** @type {__VLS_StyleScopedClasses['model-item-main']} */ ;
+/** @type {__VLS_StyleScopedClasses['model-name']} */ ;
+/** @type {__VLS_StyleScopedClasses['model-badge']} */ ;
+/** @type {__VLS_StyleScopedClasses['model-desc']} */ ;
+/** @type {__VLS_StyleScopedClasses['empty-dropdown-models']} */ ;
+/** @type {__VLS_StyleScopedClasses['icon-btn']} */ ;
 /** @type {__VLS_StyleScopedClasses['session-picker']} */ ;
 /** @type {__VLS_StyleScopedClasses['log-action']} */ ;
 /** @type {__VLS_StyleScopedClasses['icon-btn']} */ ;
@@ -5019,8 +6844,28 @@ if (__VLS_ctx.selectedAsset) {
 /** @type {__VLS_StyleScopedClasses['assistant']} */ ;
 /** @type {__VLS_StyleScopedClasses['message-avatar']} */ ;
 /** @type {__VLS_StyleScopedClasses['thinking-dots']} */ ;
+/** @type {__VLS_StyleScopedClasses['horizontal-resizer']} */ ;
+/** @type {__VLS_StyleScopedClasses['chat-resizer']} */ ;
+/** @type {__VLS_StyleScopedClasses['glass-resizer']} */ ;
 /** @type {__VLS_StyleScopedClasses['input-container']} */ ;
+/** @type {__VLS_StyleScopedClasses['chat-input-row']} */ ;
+/** @type {__VLS_StyleScopedClasses['rag-document-selector-sidebar']} */ ;
+/** @type {__VLS_StyleScopedClasses['rag-sidebar-header']} */ ;
+/** @type {__VLS_StyleScopedClasses['rag-title-container']} */ ;
+/** @type {__VLS_StyleScopedClasses['rag-actions-container']} */ ;
+/** @type {__VLS_StyleScopedClasses['rag-action-link']} */ ;
+/** @type {__VLS_StyleScopedClasses['select-all']} */ ;
+/** @type {__VLS_StyleScopedClasses['rag-action-link']} */ ;
+/** @type {__VLS_StyleScopedClasses['clear-all']} */ ;
+/** @type {__VLS_StyleScopedClasses['rag-sidebar-list']} */ ;
+/** @type {__VLS_StyleScopedClasses['rag-doc-sidebar-tag']} */ ;
+/** @type {__VLS_StyleScopedClasses['rag-doc-name']} */ ;
+/** @type {__VLS_StyleScopedClasses['chat-input-main']} */ ;
+/** @type {__VLS_StyleScopedClasses['attachment-preview-list']} */ ;
+/** @type {__VLS_StyleScopedClasses['attachment-preview-card']} */ ;
 /** @type {__VLS_StyleScopedClasses['input-wrapper']} */ ;
+/** @type {__VLS_StyleScopedClasses['upload-attachment-btn']} */ ;
+/** @type {__VLS_StyleScopedClasses['animate-spin']} */ ;
 /** @type {__VLS_StyleScopedClasses['stop-btn']} */ ;
 /** @type {__VLS_StyleScopedClasses['send-btn']} */ ;
 /** @type {__VLS_StyleScopedClasses['asset-modal-backdrop']} */ ;
@@ -5045,9 +6890,13 @@ const __VLS_self = (await import('vue')).defineComponent({
             Send: Send,
             Trash2: Trash2,
             Cpu: Cpu,
+            ImageIcon: ImageIcon,
             Volume2: Volume2,
+            FileText: FileText,
             RefreshCw: RefreshCw,
+            BookOpen: BookOpen,
             Activity: Activity,
+            FolderOpen: FolderOpen,
             Star: Star,
             Download: Download,
             X: X,
@@ -5068,14 +6917,22 @@ const __VLS_self = (await import('vue')).defineComponent({
             taskQueue: taskQueue,
             notifications: notifications,
             inputText: inputText,
+            geminiMode: geminiMode,
+            selectedGeminiModel: selectedGeminiModel,
+            showModelDropdown: showModelDropdown,
+            selectModel: selectModel,
+            formatModelInfo: formatModelInfo,
             isThinking: isThinking,
             copiedIndex: copiedIndex,
             chatContainer: chatContainer,
             expandedThinks: expandedThinks,
             toggleThink: toggleThink,
+            renderMarkdown: renderMarkdown,
             parseMessageContent: parseMessageContent,
             imageHistories: imageHistories,
             ttsHistories: ttsHistories,
+            documents: documents,
+            selectedDocIds: selectedDocIds,
             activeVoiceTab: activeVoiceTab,
             voiceTabs: voiceTabs,
             voiceTabCounts: voiceTabCounts,
@@ -5096,6 +6953,11 @@ const __VLS_self = (await import('vue')).defineComponent({
             accountLoading: accountLoading,
             settingsLoading: settingsLoading,
             settingsState: settingsState,
+            geminiCapabilities: geminiCapabilities,
+            geminiProbeLoading: geminiProbeLoading,
+            uploadedFiles: uploadedFiles,
+            fileInput: fileInput,
+            isUploading: isUploading,
             dataManagementStatus: dataManagementStatus,
             dataManagementLoading: dataManagementLoading,
             selectedDataMode: selectedDataMode,
@@ -5104,6 +6966,8 @@ const __VLS_self = (await import('vue')).defineComponent({
             postgresqlInfo: postgresqlInfo,
             settingsDraft: settingsDraft,
             sidebarWidth: sidebarWidth,
+            chatInputHeight: chatInputHeight,
+            textareaRef: textareaRef,
             promptTemplates: promptTemplates,
             promptDraft: promptDraft,
             favorites: favorites,
@@ -5116,6 +6980,9 @@ const __VLS_self = (await import('vue')).defineComponent({
             minimaxModels: minimaxModels,
             deepSeekModels: deepSeekModels,
             openaiModels: openaiModels,
+            geminiModels: geminiModels,
+            availableGeminiModels: availableGeminiModels,
+            isGeminiImageAvailable: isGeminiImageAvailable,
             providerSessions: providerSessions,
             sessionSummaries: sessionSummaries,
             dashboardStats: dashboardStats,
@@ -5143,6 +7010,10 @@ const __VLS_self = (await import('vue')).defineComponent({
             refreshProviderModels: refreshProviderModels,
             saveProviderSettings: saveProviderSettings,
             openDeepSeekUsage: openDeepSeekUsage,
+            handleGeminiProbe: handleGeminiProbe,
+            triggerFileUpload: triggerFileUpload,
+            handleFileUpload: handleFileUpload,
+            removeUploadedFile: removeUploadedFile,
             loadApiStatus: loadApiStatus,
             handlePreview: handlePreview,
             handleGenerateTts: handleGenerateTts,
@@ -5164,6 +7035,7 @@ const __VLS_self = (await import('vue')).defineComponent({
             downloadSelectedAssets: downloadSelectedAssets,
             exportJson: exportJson,
             exportMarkdown: exportMarkdown,
+            persistLayout: persistLayout,
             startResize: startResize,
             handleSend: handleSend,
             handleStop: handleStop,

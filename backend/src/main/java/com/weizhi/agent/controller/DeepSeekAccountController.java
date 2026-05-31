@@ -22,14 +22,14 @@ public class DeepSeekAccountController {
     private final DeepSeekUsageService usageService;
     private final AiSettingsService settingsService;
 
-    private final OkHttpClient httpClient = new OkHttpClient.Builder()
-            .connectTimeout(10, TimeUnit.SECONDS)
-            .readTimeout(30, TimeUnit.SECONDS)
-            .build();
+    private final OkHttpClient httpClient;
 
-    public DeepSeekAccountController(DeepSeekUsageService usageService, AiSettingsService settingsService) {
+    public DeepSeekAccountController(DeepSeekUsageService usageService, AiSettingsService settingsService, OkHttpClient okHttpClient) {
         this.usageService = usageService;
         this.settingsService = settingsService;
+        this.httpClient = okHttpClient.newBuilder()
+                .readTimeout(30, TimeUnit.SECONDS)
+                .build();
     }
 
     @GetMapping("/balance")

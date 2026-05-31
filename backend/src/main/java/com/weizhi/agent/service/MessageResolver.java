@@ -37,13 +37,18 @@ public final class MessageResolver {
             }
         }
 
-        if (!messages.isEmpty()) return messages;
-
-        // Fallback: single "message" field
         Object message = requestBody.get("message");
         String content = message == null ? "" : String.valueOf(message).trim();
-        if (!content.isEmpty()) messages.add(Map.of("role", "user", "content", content));
+        if (!content.isEmpty() && shouldAppendMessage(messages, content)) {
+            messages.add(Map.of("role", "user", "content", content));
+        }
 
         return messages;
+    }
+
+    private static boolean shouldAppendMessage(List<Map<String, String>> messages, String content) {
+        if (messages.isEmpty()) return true;
+        Map<String, String> last = messages.get(messages.size() - 1);
+        return !"user".equals(last.get("role")) || !content.equals(last.get("content"));
     }
 }
